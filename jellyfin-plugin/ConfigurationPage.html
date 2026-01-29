@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Real-Time HDR SRGAN Pipeline Configuration</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            padding: 20px;
+            background-color: #1a1a1a;
+            color: #e0e0e0;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #00a4dc;
+            border-bottom: 2px solid #00a4dc;
+            padding-bottom: 10px;
+        }
+        .section {
+            background-color: #2a2a2a;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            border: 1px solid #3a3a3a;
+        }
+        .section h2 {
+            color: #00a4dc;
+            margin-top: 0;
+        }
+        .form-group {
+            margin: 15px 0;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #b0b0b0;
+            font-weight: 500;
+        }
+        input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            margin-right: 10px;
+        }
+        select, input[type="text"], input[type="number"] {
+            width: 100%;
+            padding: 8px;
+            background-color: #1a1a1a;
+            border: 1px solid #3a3a3a;
+            border-radius: 4px;
+            color: #e0e0e0;
+            font-size: 14px;
+        }
+        button {
+            background-color: #00a4dc;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0088b3;
+        }
+        button.secondary {
+            background-color: #3a3a3a;
+        }
+        button.secondary:hover {
+            background-color: #4a4a4a;
+        }
+        button.danger {
+            background-color: #dc3545;
+        }
+        button.danger:hover {
+            background-color: #c82333;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .status.success {
+            background-color: #28a745;
+            color: white;
+        }
+        .status.error {
+            background-color: #dc3545;
+            color: white;
+        }
+        .status.warning {
+            background-color: #ffc107;
+            color: #000;
+        }
+        .status.info {
+            background-color: #17a2b8;
+            color: white;
+        }
+        .gpu-info {
+            background-color: #1a1a1a;
+            padding: 15px;
+            border-radius: 4px;
+            border: 1px solid #3a3a3a;
+            margin: 10px 0;
+            font-family: monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+        }
+        .help-text {
+            color: #888;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Real-Time HDR SRGAN Pipeline Configuration</h1>
+
+        <!-- GPU Detection Section -->
+        <div class="section">
+            <h2>GPU Detection</h2>
+            <div class="form-group">
+                <button id="detectGpuBtn" onclick="detectGPU()">Detect NVIDIA GPU</button>
+                <div id="gpuStatus"></div>
+                <div id="gpuInfo" class="gpu-info" style="display: none;"></div>
+            </div>
+        </div>
+
+        <!-- Plugin Settings Section -->
+        <div class="section">
+            <h2>Plugin Settings</h2>
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="enableUpscaling" onchange="saveConfig()">
+                    Enable HDR Upscaling
+                </label>
+                <div class="help-text">Enable real-time HDR upscaling during transcoding (requires NVIDIA GPU)</div>
+            </div>
+
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="enableTranscoding" onchange="saveConfig()">
+                    Enable Transcoding Integration
+                </label>
+                <div class="help-text">Integrate upscaling into Jellyfin transcoding pipeline</div>
+            </div>
+
+            <div class="form-group">
+                <label for="gpuDevice">GPU Device Selection:</label>
+                <select id="gpuDevice" onchange="saveConfig()">
+                    <option value="0">Auto-detect</option>
+                </select>
+                <div class="help-text">Select which GPU to use for upscaling (if multiple GPUs available)</div>
+            </div>
+
+            <div class="form-group">
+                <label for="upscaleFactor">Upscale Factor:</label>
+                <select id="upscaleFactor" onchange="saveConfig()">
+                    <option value="2">2x</option>
+                    <option value="4">4x</option>
+                </select>
+                <div class="help-text">Upscaling multiplier (higher = better quality but slower)</div>
+            </div>
+        </div>
+
+        <!-- Backup & Restore Section -->
+        <div class="section">
+            <h2>Backup & Restore</h2>
+            <div class="form-group">
+                <button id="createBackupBtn" onclick="createBackup()">Create Configuration Backup</button>
+                <div class="help-text">Create a backup of your Jellyfin configuration before making changes</div>
+            </div>
+            <div id="backupStatus"></div>
+
+            <div class="form-group" style="margin-top: 20px;">
+                <label for="restoreBackup">Restore from Backup:</label>
+                <select id="restoreBackup">
+                    <option value="">Select a backup...</option>
+                </select>
+                <button onclick="restoreBackup()" class="secondary">Restore</button>
+                <div class="help-text">Restore Jellyfin configuration from a previous backup</div>
+            </div>
+            <div id="restoreStatus"></div>
+        </div>
+
+        <!-- Status Messages -->
+        <div id="statusMessages"></div>
+    </div>
+
+    <script src="ConfigurationPage.js"></script>
+</body>
+</html>
