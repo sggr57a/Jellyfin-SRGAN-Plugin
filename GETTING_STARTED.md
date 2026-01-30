@@ -34,14 +34,17 @@ cd Real-Time-HDR-SRGAN-Pipeline
 ./scripts/install_all.sh
 
 # The installer automatically:
+#   ✓ Installs system dependencies (Docker, .NET, Python, etc.)
 #   ✓ Verifies system prerequisites
 #   ✓ Builds Docker container
 #   ✓ Sets up AI model (prompts for download)
 #   ✓ Installs watchdog systemd service (auto-starts on boot)
 #   ✓ Builds Jellyfin plugin (if Jellyfin detected)
+#   ✓ Configures webhook for automatic upscaling on playback
 #   ✓ Starts all services
 
-# 3. Configure Jellyfin webhook (see WEBHOOK_CONFIGURATION_CORRECT.md)
+# 3. Restart Jellyfin to load plugins
+sudo systemctl restart jellyfin
 
 # 4. Test webhook (optional)
 python3 scripts/test_webhook.py
@@ -192,10 +195,28 @@ sudo systemctl restart jellyfin
 
 ### Step 8: Configure Jellyfin Webhook
 
-See **[WEBHOOK_CONFIGURATION_CORRECT.md](WEBHOOK_CONFIGURATION_CORRECT.md)** for detailed webhook configuration.
+**Option 1: Automatic Configuration (Recommended)**
 
-**Quick summary:**
+```bash
+# Configure webhook automatically
+sudo python3 scripts/configure_webhook.py http://YOUR_SERVER_IP:5000
 
+# Restart Jellyfin to load configuration
+sudo systemctl restart jellyfin
+```
+
+The script will create the webhook configuration with:
+- Webhook name: "SRGAN 4K Upscaler"
+- Endpoint: `http://YOUR_SERVER_IP:5000/upscale-trigger`
+- Trigger: Playback Start
+- Item types: Movies and Episodes
+- Template: Includes `{{Path}}` variable for video file path
+
+**Option 2: Manual Configuration**
+
+See **[WEBHOOK_CONFIGURATION_CORRECT.md](WEBHOOK_CONFIGURATION_CORRECT.md)** for detailed manual webhook configuration.
+
+Quick summary:
 1. Install Jellyfin Webhook plugin: Dashboard → Plugins → Catalog → Webhooks
 2. Add webhook: Dashboard → Plugins → Webhooks → Add Webhook
 3. Configure:
@@ -226,7 +247,7 @@ After installation, verify:
 - [ ] Watchdog service running: `./scripts/manage_watchdog.sh status`
 - [ ] Webhook responding: `curl http://localhost:5000/health`
 - [ ] Jellyfin plugin installed: Dashboard → Plugins → Installed
-- [ ] Jellyfin webhook configured: Dashboard → Plugins → Webhooks
+- [ ] Jellyfin webhook configured: Dashboard → Plugins → Webhooks (or via `scripts/configure_webhook.py`)
 - [ ] GPU accessible: `docker compose run --rm srgan-upscaler nvidia-smi`
 - [ ] Output directory exists and writable
 - [ ] Test video upscales successfully
@@ -255,7 +276,10 @@ The watchdog runs as a systemd service:
 # Set before starting watchdog
 export UPSCALED_DIR=/mnt/media/upscaled
 export SRGAN_QUEUE_FILE=./cache/queue.jsonl
+export WATCHDOG_URL=http://localhost:5000  # Used by webhook auto-configuration
 ```
+
+**Note**: `WATCHDOG_URL` is used during installation by `scripts/configure_webhook.py` to set the webhook endpoint. If your watchdog service runs on a different host or port, set this variable before running `install_all.sh`.
 
 ### For Container (docker-compose.yml)
 

@@ -15,6 +15,173 @@ echo "Real-Time HDR SRGAN Pipeline - Automated Installation"
 echo "=========================================================================="
 echo ""
 
+# Helper function to check if running as root/sudo
+check_sudo() {
+  if [[ $EUID -eq 0 ]]; then
+    echo -e "${YELLOW}⚠ Running as root. Some installations may need regular user context.${NC}"
+  fi
+}
+
+# Helper function to detect OS
+detect_os() {
+  if [[ -f /etc/os-release ]]; then
+    . /etc/os-release
+    OS_ID="${ID}"
+    OS_VERSION="${VERSION_ID}"
+    echo -e "${BLUE}Detected OS: ${NAME} ${VERSION_ID}${NC}"
+  else
+    echo -e "${RED}Cannot detect OS. This script supports Ubuntu/Debian.${NC}"
+    exit 1
+  fi
+}
+
+# Step 0: Install system dependencies
+echo -e "${BLUE}Step 0: Installing system dependencies...${NC}"
+echo "=========================================================================="
+detect_os
+
+# Install Docker if missing
+if ! command -v docker >/dev/null 2>&1; then
+  echo -e "${YELLOW}Docker not found. Installing Docker...${NC}"
+  if [[ "${OS_ID}" == "ubuntu" ]] || [[ "${OS_ID}" == "debian" ]]; then
+    curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
+    sudo sh /tmp/get-docker.sh
+    sudo usermod -aG docker "${USER}"
+    rm /tmp/get-docker.sh
+    echo -e "${GREEN}✓ Docker installed${NC}"
+    echo -e "${YELLOW}⚠ You may need to log out and back in for group changes to take effect${NC}"
+    echo "  Or run: newgrp docker"
+  else
+    echo -e "${RED}Unsupported OS for automatic Docker installation: ${OS_ID}${NC}"
+    echo "Please install Docker manually: https://docs.docker.com/engine/install/"
+    exit 1
+  fi
+else
+  echo -e "${GREEN}✓ Docker already installed${NC}"
+fi
+
+# Verify Docker Compose v2
+if ! docker compose version >/dev/null 2>&1; then
+  echo -e "${YELLOW}Docker Compose v2 not found${NC}"
+  if docker-compose version >/dev/null 2>&1; then
+    echo -e "${YELLOW}Legacy docker-compose detected. Docker Compose v2 is required.${NC}"
+    echo "Please upgrade Docker to get Compose v2: https://docs.docker.com/compose/install/"
+    exit 1
+  else
+    echo -e "${RED}Docker Compose v2 not available${NC}"
+    exit 1
+  fi
+else
+  echo -e "${GREEN}✓ Docker Compose v2 available${NC}"
+fi
+
+# Install Python and Flask if missing
+if ! command -v python3 >/dev/null 2>&1; then
+  echo -e "${YELLOW}Python 3 not found. Installing...${NC}"
+  sudo apt-get update
+  sudo apt-get install -y python3 python3-pip
+  echo -e "${GREEN}✓ Python 3 installed${NC}"
+else
+  echo -e "${GREEN}✓ Python 3 already installed${NC}"
+fi
+
+# Install Flask and requests
+echo "Checking Python dependencies (Flask, requests)..."
+if ! python3 -c "import flask" >/dev/null 2>&1 || ! python3 -c "import requests" >/dev/null 2>&1; then
+  echo -e "${YELLOW}Installing Flask and requests...${NC}"
+  pip3 install flask requests
+  echo -e "${GREEN}✓ Flask and requests installed${NC}"
+else
+  echo -e "${GREEN}✓ Flask and requests already installed${NC}"
+fi
+
+# Install .NET 9.0 SDK and Runtime
+if ! command -v dotnet >/dev/null 2>&1; then
+  echo -e "${YELLOW}.NET SDK not found. Installing .NET 9.0...${NC}"
+  if [[ "${OS_ID}" == "ubuntu" ]]; then
+    wget https://packages.microsoft.com/config/ubuntu/${OS_VERSION}/packages-microsoft-prod.deb -O /tmp/packages-microsoft-prod.deb
+    sudo dpkg -i /tmp/packages-microsoft-prod.deb
+    rm /tmp/packages-microsoft-prod.deb
+    sudo apt-get update
+    sudo apt-get install -y dotnet-sdk-9.0 aspnetcore-runtime-9.0
+    echo -e "${GREEN}✓ .NET 9.0 SDK and Runtime installed${NC}"
+  elif [[ "${OS_ID}" == "debian" ]]; then
+    wget https://packages.microsoft.com/config/debian/${OS_VERSION}/packages-microsoft-prod.deb -O /tmp/packages-microsoft-prod.deb
+    sudo dpkg -i /tmp/packages-microsoft-prod.deb
+    rm /tmp/packages-microsoft-prod.deb
+    sudo apt-get update
+    sudo apt-get install -y dotnet-sdk-9.0 aspnetcore-runtime-9.0
+    echo -e "${GREEN}✓ .NET 9.0 SDK and Runtime installed${NC}"
+  else
+    echo -e "${YELLOW}⚠ Unsupported OS for automatic .NET installation${NC}"
+    echo "Please install .NET 9.0 manually: https://dotnet.microsoft.com/download"
+  fi
+else
+  echo -e "${GREEN}✓ .NET SDK already installed ($(dotnet --version))${NC}"
+fi
+
+# Check for NVIDIA GPU and drivers
+echo "Checking for NVIDIA GPU..."
+if command -v nvidia-smi >/dev/null 2>&1; then
+  echo -e "${GREEN}✓ NVIDIA drivers installed${NC}"
+  nvidia-smi --query-gpu=name --format=csv,noheader | head -1
+else
+  echo -e "${YELLOW}⚠ NVIDIA drivers not detected${NC}"
+  echo "Please install NVIDIA drivers for your GPU: https://www.nvidia.com/Download/index.aspx"
+  echo "This is required for GPU-accelerated upscaling."
+  read -p "Continue without GPU support? (y/N) " -n 1 -r
+  echo ""
+  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    exit 1
+  fi
+fi
+
+# Install NVIDIA Container Toolkit if GPU is available
+if command -v nvidia-smi >/dev/null 2>&1; then
+  if ! docker run --rm --gpus all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi >/dev/null 2>&1; then
+    echo -e "${YELLOW}NVIDIA Container Toolkit not found. Installing...${NC}"
+    if [[ "${OS_ID}" == "ubuntu" ]] || [[ "${OS_ID}" == "debian" ]]; then
+      distribution="${OS_ID}${OS_VERSION}"
+      curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+      curl -s -L https://nvidia.github.io/libnvidia-container/${distribution}/libnvidia-container.list | \
+        sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+        sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+      sudo apt-get update
+      sudo apt-get install -y nvidia-container-toolkit
+      sudo systemctl restart docker
+      echo -e "${GREEN}✓ NVIDIA Container Toolkit installed${NC}"
+    else
+      echo -e "${YELLOW}⚠ Unsupported OS for automatic NVIDIA Container Toolkit installation${NC}"
+      echo "Please install manually: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html"
+    fi
+  else
+    echo -e "${GREEN}✓ NVIDIA Container Toolkit already installed${NC}"
+  fi
+fi
+
+# Check for Jellyfin server (do not install)
+echo "Checking for Jellyfin server..."
+JELLYFIN_FOUND=false
+if systemctl is-active --quiet jellyfin 2>/dev/null; then
+  echo -e "${GREEN}✓ Jellyfin server is running${NC}"
+  JELLYFIN_FOUND=true
+elif command -v jellyfin >/dev/null 2>&1; then
+  echo -e "${YELLOW}⚠ Jellyfin is installed but not running${NC}"
+  JELLYFIN_FOUND=true
+else
+  echo -e "${YELLOW}⚠ Jellyfin server not detected${NC}"
+  echo "The plugin requires Jellyfin 10.8+ to be installed."
+  echo "Install from: https://jellyfin.org/downloads/"
+  echo ""
+  read -p "Continue without Jellyfin? (plugin installation will be skipped) (y/N) " -n 1 -r
+  echo ""
+  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    exit 1
+  fi
+fi
+
+echo ""
+
 # Step 1: Run verification
 echo -e "${BLUE}Step 1: Verifying system prerequisites...${NC}"
 echo "=========================================================================="
@@ -22,27 +189,14 @@ if [[ -f "${REPO_DIR}/scripts/verify_setup.py" ]]; then
   if python3 "${REPO_DIR}/scripts/verify_setup.py"; then
     echo -e "${GREEN}✓ Verification passed${NC}"
   else
-    echo -e "${YELLOW}⚠ Some checks failed. Continuing anyway...${NC}"
-    echo "  (You may need to install missing components)"
+    echo -e "${YELLOW}⚠ Some checks failed but dependencies are installed${NC}"
+    echo "  Continuing with installation..."
     sleep 2
   fi
 else
   echo -e "${YELLOW}⚠ verify_setup.py not found, skipping verification${NC}"
 fi
 echo ""
-
-# Basic prerequisites check
-if ! command -v docker >/dev/null 2>&1; then
-  echo -e "${RED}✗ Docker is not installed or not in PATH.${NC}" >&2
-  echo "Please install Docker first: https://docs.docker.com/engine/install/"
-  exit 1
-fi
-
-if ! docker compose version >/dev/null 2>&1; then
-  echo -e "${RED}✗ Docker Compose v2 not found. Install or upgrade Docker.${NC}" >&2
-  echo "You may be using legacy docker-compose. Upgrade to Docker Compose v2."
-  exit 1
-fi
 
 # Step 2: Build Jellyfin plugin (if applicable)
 echo -e "${BLUE}Step 2: Building Jellyfin plugin (if available)...${NC}"
@@ -118,6 +272,35 @@ else
   echo "  The patched webhook plugin is required for {{Path}} variable support."
   echo "  Clone it with: git clone https://github.com/jellyfin/jellyfin-plugin-webhook.git"
   echo "  Then apply the Path variable patch from WEBHOOK_CONFIGURATION_CORRECT.md"
+fi
+echo ""
+
+# Step 2.4: Configure webhook for SRGAN pipeline
+echo -e "${BLUE}Step 2.4: Configuring webhook for SRGAN pipeline...${NC}"
+echo "=========================================================================="
+WEBHOOK_CONFIG_PATH="/var/lib/jellyfin/plugins/configurations/Jellyfin.Plugin.Webhook.xml"
+WATCHDOG_URL="${WATCHDOG_URL:-http://localhost:5000}"
+
+if [[ -f "${REPO_DIR}/scripts/configure_webhook.py" ]]; then
+  echo "Configuring webhook to trigger upscaling on playback..."
+  echo "  Watchdog URL: ${WATCHDOG_URL}"
+  echo "  Config file: ${WEBHOOK_CONFIG_PATH}"
+  echo ""
+  
+  if sudo python3 "${REPO_DIR}/scripts/configure_webhook.py" "${WATCHDOG_URL}" "${WEBHOOK_CONFIG_PATH}"; then
+    echo ""
+    echo -e "${GREEN}✓ Webhook configured successfully${NC}"
+    echo "  The webhook will automatically trigger upscaling when playback starts"
+    echo "  Restart Jellyfin to load the configuration:"
+    echo "    sudo systemctl restart jellyfin"
+  else
+    echo -e "${YELLOW}⚠ Webhook configuration failed (non-critical)${NC}"
+    echo "  You can configure manually through Jellyfin Dashboard → Plugins → Webhooks"
+    echo "  Or run: sudo python3 ${REPO_DIR}/scripts/configure_webhook.py ${WATCHDOG_URL}"
+  fi
+else
+  echo -e "${YELLOW}⚠ Webhook configuration script not found${NC}"
+  echo "  Manual configuration required through Jellyfin Dashboard → Plugins → Webhooks"
 fi
 echo ""
 

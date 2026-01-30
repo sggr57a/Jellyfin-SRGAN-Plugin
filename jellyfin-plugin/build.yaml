@@ -1,0 +1,43 @@
+name: "Real-Time HDR SRGAN Pipeline"
+guid: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+version: "1.0.0"
+targetAbi: "10.8.0.0"
+framework: "net9.0"
+owner: "jellyfin-srgan-plugin"
+overview: "Real-time HDR upscaling and SRGAN processing pipeline with HLS streaming support"
+description: >
+  Provides real-time HDR upscaling capabilities for Jellyfin using NVIDIA GPUs.
+  Features include automatic GPU detection, configuration backup/restore, 
+  HLS streaming integration, and webhook-based video processing pipeline.
+
+category: "Transcoding"
+artifacts:
+  - "Jellyfin.Plugin.RealTimeHdrSrgan.dll"
+  - "gpu-detection.sh"
+  - "backup-config.sh"
+  - "restore-config.sh"
+changelog: |-
+  ## v1.0.0 - Initial Release
+
+  ### Features
+  - NVIDIA GPU detection and configuration
+  - Real-time video upscaling (2x and 4x)
+  - HLS streaming support with automatic switching
+  - Configuration backup and restore functionality
+  - Webhook integration for automatic processing
+  - Progress overlay for playback status
+  - Docker container support with CUDA acceleration
+
+  ### Configuration
+  - Upscaling toggle and factor selection
+  - GPU device selection
+  - HLS streaming options
+  - Watchdog URL configuration
+  - Concurrent job management
+
+  ### API Endpoints
+  - GPU detection
+  - Backup/restore configuration
+  - HLS status checking
+  - Manual upscale triggering
+  - Configuration management
