@@ -1,0 +1,29 @@
+{
+  "webhookName": "SRGAN 4K Upscaler",
+  "webhookUrl": "http://YOUR_SERVER_IP:5000/upscale-trigger",
+  "notificationTypes": {
+    "PlaybackStart": true,
+    "PlaybackStop": false,
+    "UserDataSaved": false,
+    "ItemAdded": false
+  },
+  "itemTypes": {
+    "Movie": true,
+    "Episode": true,
+    "Audio": false,
+    "Book": false,
+    "Series": false,
+    "Season": false
+  },
+  "requestContentType": "application/json",
+  "template": {
+    "Path": "{{Path}}",
+    "Name": "{{Name}}",
+    "ItemType": "{{ItemType}}",
+    "ItemId": "{{ItemId}}",
+    "NotificationUsername": "{{NotificationUsername}}",
+    "UserId": "{{UserId}}",
+    "NotificationType": "{{NotificationType}}",
+    "ServerName": "{{ServerName}}"
+  }
+}

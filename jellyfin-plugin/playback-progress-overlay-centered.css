@@ -1,0 +1,162 @@
+/**
+ * Centered Loading Indicator Variant - Theme-Aware
+ *
+ * Use this CSS in addition to the default CSS for a more prominent,
+ * centered loading experience that matches Jellyfin's theme colors
+ */
+
+/* Override default positioning to center the loading indicator */
+.upscaling-progress-container.loading-state {
+    top: 50% !important;
+    left: 50% !important;
+    right: auto !important;
+    transform: translate(-50%, -50%) !important;
+}
+
+/* Dim the background during loading - uses theme-aware backdrop */
+.upscaling-progress-container.loading-state::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--backdrop-color, rgba(0, 0, 0, 0.6));
+    z-index: -1;
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* Make the loading indicator larger and more prominent */
+.upscaling-progress-content.loading-state {
+    min-width: 420px;
+    padding: 40px;
+    text-align: center;
+    transform: scale(1);
+    animation: zoomIn 0.3s ease;
+}
+
+@keyframes zoomIn {
+    from {
+        transform: scale(0.9);
+        opacity: 0;
+    }
+    to {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+/* Larger icon */
+.upscaling-progress-content.loading-state .upscaling-icon {
+    font-size: 48px;
+    display: block;
+    margin-bottom: 20px;
+}
+
+/* Larger title */
+.upscaling-progress-content.loading-state .upscaling-title {
+    font-size: 24px;
+    margin-bottom: 15px;
+}
+
+/* Larger status text */
+.upscaling-progress-content.loading-state .status-text {
+    font-size: 18px;
+    margin-bottom: 25px;
+}
+
+/* Larger progress bar */
+.upscaling-progress-content.loading-state .upscaling-progress-bar {
+    height: 12px;
+    border-radius: 6px;
+}
+
+/* More visible progress text */
+.upscaling-progress-content.loading-state .upscaling-progress-text {
+    font-size: 18px;
+    font-weight: 700;
+}
+
+/* Pulsing animation for extra attention */
+.upscaling-progress-content.loading-state {
+    animation: pulse-glow 2s infinite;
+}
+
+@keyframes pulse-glow {
+    0%, 100% {
+        box-shadow: var(--card-shadow, 0 10px 40px rgba(0, 0, 0, 0.5)),
+                    0 0 0 0 transparent;
+    }
+    50% {
+        box-shadow: var(--card-shadow, 0 10px 40px rgba(0, 0, 0, 0.5)),
+                    0 0 30px 5px var(--accent-shadow, var(--accent-color-faded, rgba(0, 164, 220, 0.3)));
+    }
+}
+
+/* After loading completes, move back to top-right */
+.upscaling-progress-container:not(.loading-state) {
+    top: 20px !important;
+    left: auto !important;
+    right: 20px !important;
+    transform: none !important;
+    transition: all 0.5s ease;
+}
+
+/* Remove backdrop when not loading */
+.upscaling-progress-container:not(.loading-state)::before {
+    display: none;
+}
+
+/* Return to normal size after loading */
+.upscaling-progress-content:not(.loading-state) {
+    min-width: 320px;
+    padding: 20px;
+    text-align: left;
+    animation: slideToCorner 0.5s ease;
+}
+
+@keyframes slideToCorner {
+    from {
+        transform: translate(-50%, -50%);
+    }
+    to {
+        transform: translate(0, 0);
+    }
+}
+
+/* Mobile: Keep centered but full-width */
+@media (max-width: 768px) {
+    .upscaling-progress-container.loading-state {
+        top: 50% !important;
+        left: 10px !important;
+        right: 10px !important;
+        transform: translateY(-50%) !important;
+    }
+
+    .upscaling-progress-content.loading-state {
+        min-width: auto;
+        max-width: none;
+    }
+}
+
+/* Large screens: Make even more prominent */
+@media (min-width: 2560px) {
+    .upscaling-progress-content.loading-state {
+        min-width: 600px;
+        padding: 50px;
+        font-size: 20px;
+    }
+
+    .upscaling-progress-content.loading-state .upscaling-icon {
+        font-size: 64px;
+    }
+
+    .upscaling-progress-content.loading-state .upscaling-title {
+        font-size: 32px;
+    }
+}
