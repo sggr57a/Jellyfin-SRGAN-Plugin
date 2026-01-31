@@ -41,7 +41,7 @@ services:
     environment:
       - NVIDIA_DRIVER_CAPABILITIES=all
       - PYTHONUNBUFFERED=1
-      - SRGAN_ENABLE=1
+      - SRGAN_ENABLE=0
       - SRGAN_MODEL_PATH=/app/models/swift_srgan_4x.pth
       - SRGAN_DEVICE=cuda
       - SRGAN_FP16=1
