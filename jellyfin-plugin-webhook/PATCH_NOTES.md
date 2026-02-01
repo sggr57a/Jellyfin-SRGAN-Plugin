@@ -57,10 +57,10 @@ dotnet build -c Release
 
 ```bash
 # Linux
-sudo cp bin/Release/net8.0/Jellyfin.Plugin.Webhook.dll /var/lib/jellyfin/plugins/Webhook/
+sudo cp bin/Release/net9.0/Jellyfin.Plugin.Webhook.dll /var/lib/jellyfin/plugins/Webhook/
 
 # Docker
-docker cp bin/Release/net8.0/Jellyfin.Plugin.Webhook.dll jellyfin:/config/plugins/Webhook/
+docker cp bin/Release/net9.0/Jellyfin.Plugin.Webhook.dll jellyfin:/config/plugins/Webhook/
 ```
 
 Restart Jellyfin after installing.
@@ -69,7 +69,7 @@ Restart Jellyfin after installing.
 
 - Based on: Official Jellyfin Webhook Plugin
 - Jellyfin Version: 10.8+
-- .NET Version: 8.0
+- .NET Version: 9.0
 
 ## Upstream
 
