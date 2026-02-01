@@ -16,11 +16,19 @@ if command -v dotnet &> /dev/null; then
     echo "✓ Found dotnet: $(dotnet --version)"
     echo ""
     
+    echo "Clearing NuGet cache..."
+    dotnet nuget locals all --clear
+    
+    echo ""
     echo "Cleaning previous builds..."
     dotnet clean -c Release
     
     echo ""
-    echo "Building plugin with dotnet..."
+    echo "Restoring packages..."
+    dotnet restore --force
+    
+    echo ""
+    echo "Building plugin..."
     dotnet build -c Release
     
     echo ""
@@ -68,7 +76,7 @@ else
             -v "$(pwd):/src" \
             -w /src \
             mcr.microsoft.com/dotnet/sdk:9.0 \
-            sh -c "dotnet clean -c Release && dotnet build -c Release"
+            sh -c "dotnet nuget locals all --clear && dotnet restore --force && dotnet clean -c Release && dotnet build -c Release"
         
         echo ""
         echo "=========================================="
