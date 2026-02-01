@@ -11,38 +11,343 @@ NC='\033[0m' # No Color
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 echo "=========================================================================="
-echo "Real-Time HDR SRGAN Pipeline - Automated Installation"
+echo "Real-Time HDR SRGAN Pipeline - Complete Installation"
+echo "=========================================================================="
+echo ""
+echo "This script will install ALL required dependencies including:"
+echo "  - Docker & Docker Compose v2"
+echo "  - .NET SDK 9.0"
+echo "  - Python 3 & pip"
+echo "  - System utilities (ffmpeg, curl, wget, git, jq)"
+echo "  - NVIDIA Container Toolkit (if GPU detected)"
+echo "  - Jellyfin plugins & overlays"
+echo ""
+echo "⚠️  This script requires sudo privileges for system package installation."
+echo ""
+read -p "Continue with installation? (y/N) " -n 1 -r
+echo ""
+if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+  echo "Installation cancelled."
+  exit 0
+fi
+echo ""
+
+# Detect OS
+echo "=========================================================================="
+echo "Detecting operating system..."
+echo "=========================================================================="
+if [[ -f /etc/os-release ]]; then
+  . /etc/os-release
+  OS=$ID
+  VER=$VERSION_ID
+  echo "Detected: $PRETTY_NAME"
+else
+  echo -e "${RED}✗ Cannot detect OS. Unsupported system.${NC}" >&2
+  exit 1
+fi
+echo ""
+
+# Check if running as root (for sudo commands)
+if [[ $EUID -eq 0 ]]; then
+  SUDO=""
+  CURRENT_USER="${SUDO_USER:-root}"
+else
+  SUDO="sudo"
+  CURRENT_USER="${USER}"
+fi
+
+# Step 0: Install system dependencies
+echo "=========================================================================="
+echo -e "${BLUE}Step 0: Installing system dependencies...${NC}"
 echo "=========================================================================="
 echo ""
 
+# Update package lists
+echo "Updating package lists..."
+case "$OS" in
+  ubuntu|debian|linuxmint|pop)
+    $SUDO apt-get update
+    ;;
+  fedora|rhel|centos|rocky|almalinux)
+    $SUDO dnf check-update || true
+    ;;
+  arch|manjaro)
+    $SUDO pacman -Sy
+    ;;
+  *)
+    echo -e "${YELLOW}⚠ Unknown OS: $OS. Package installation may fail.${NC}"
+    ;;
+esac
+echo -e "${GREEN}✓ Package lists updated${NC}"
+echo ""
+
+# Install Docker
+echo "Installing Docker..."
+if command -v docker >/dev/null 2>&1; then
+  DOCKER_VERSION=$(docker --version)
+  echo -e "${GREEN}✓ Docker already installed: $DOCKER_VERSION${NC}"
+else
+  case "$OS" in
+    ubuntu|debian|linuxmint|pop)
+      # Install prerequisites
+      $SUDO apt-get install -y ca-certificates curl gnupg lsb-release
+      
+      # Add Docker's official GPG key
+      $SUDO install -m 0755 -d /etc/apt/keyrings
+      if [[ ! -f /etc/apt/keyrings/docker.gpg ]]; then
+        curl -fsSL https://download.docker.com/linux/${OS}/gpg | $SUDO gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+        $SUDO chmod a+r /etc/apt/keyrings/docker.gpg
+      fi
+      
+      # Set up repository
+      echo \
+        "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${OS} \
+        $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+        $SUDO tee /etc/apt/sources.list.d/docker.list > /dev/null
+      
+      # Install Docker
+      $SUDO apt-get update
+      $SUDO apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+      ;;
+      
+    fedora)
+      $SUDO dnf -y install dnf-plugins-core
+      $SUDO dnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo
+      $SUDO dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+      ;;
+      
+    rhel|centos|rocky|almalinux)
+      $SUDO dnf -y install dnf-plugins-core
+      $SUDO dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+      $SUDO dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+      ;;
+      
+    arch|manjaro)
+      $SUDO pacman -S --noconfirm docker docker-compose
+      ;;
+      
+    *)
+      echo -e "${RED}✗ Automatic Docker installation not supported for $OS${NC}"
+      echo "Please install Docker manually: https://docs.docker.com/engine/install/"
+      exit 1
+      ;;
+  esac
+  
+  # Start and enable Docker
+  $SUDO systemctl start docker
+  $SUDO systemctl enable docker
+  
+  # Add current user to docker group
+  if [[ "$CURRENT_USER" != "root" ]]; then
+    $SUDO usermod -aG docker "$CURRENT_USER"
+    echo -e "${YELLOW}⚠ Added $CURRENT_USER to docker group${NC}"
+    echo "  You may need to log out and back in for this to take effect."
+    echo "  Or run: newgrp docker"
+  fi
+  
+  echo -e "${GREEN}✓ Docker installed successfully${NC}"
+fi
+echo ""
+
+# Verify Docker Compose v2
+echo "Verifying Docker Compose v2..."
+if docker compose version >/dev/null 2>&1; then
+  COMPOSE_VERSION=$(docker compose version --short)
+  echo -e "${GREEN}✓ Docker Compose v2 installed: $COMPOSE_VERSION${NC}"
+else
+  echo -e "${RED}✗ Docker Compose v2 not found after installation${NC}"
+  echo "This should not happen. Docker installation may have failed."
+  exit 1
+fi
+echo ""
+
+# Install .NET SDK 9.0
+echo "Installing .NET SDK 9.0..."
+if dotnet --list-sdks 2>/dev/null | grep -q "9.0"; then
+  DOTNET_VERSION=$(dotnet --version)
+  echo -e "${GREEN}✓ .NET SDK 9.0 already installed: $DOTNET_VERSION${NC}"
+else
+  case "$OS" in
+    ubuntu|debian|linuxmint|pop)
+      # Download Microsoft package repository
+      PACKAGES_MICROSOFT_PROD_DEB="packages-microsoft-prod.deb"
+      if [[ "$OS" == "ubuntu" || "$OS" == "linuxmint" || "$OS" == "pop" ]]; then
+        # For Ubuntu-based distros
+        UBUNTU_VERSION="${VER}"
+        # Map Linux Mint/Pop OS versions to Ubuntu versions
+        if [[ "$OS" == "linuxmint" ]]; then
+          case "${VER%%.*}" in
+            21) UBUNTU_VERSION="22.04" ;;
+            20) UBUNTU_VERSION="20.04" ;;
+            *) UBUNTU_VERSION="22.04" ;;
+          esac
+        elif [[ "$OS" == "pop" ]]; then
+          case "${VER%%.*}" in
+            22) UBUNTU_VERSION="22.04" ;;
+            20) UBUNTU_VERSION="20.04" ;;
+            *) UBUNTU_VERSION="22.04" ;;
+          esac
+        fi
+        wget -q https://packages.microsoft.com/config/ubuntu/${UBUNTU_VERSION}/packages-microsoft-prod.deb -O /tmp/${PACKAGES_MICROSOFT_PROD_DEB}
+      else
+        # For Debian
+        wget -q https://packages.microsoft.com/config/debian/${VER}/packages-microsoft-prod.deb -O /tmp/${PACKAGES_MICROSOFT_PROD_DEB}
+      fi
+      
+      $SUDO dpkg -i /tmp/${PACKAGES_MICROSOFT_PROD_DEB}
+      rm /tmp/${PACKAGES_MICROSOFT_PROD_DEB}
+      
+      # Install .NET SDK
+      $SUDO apt-get update
+      $SUDO apt-get install -y dotnet-sdk-9.0
+      ;;
+      
+    fedora|rhel|centos|rocky|almalinux)
+      # Add Microsoft repository
+      $SUDO rpm --import https://packages.microsoft.com/keys/microsoft.asc
+      if [[ "$OS" == "fedora" ]]; then
+        wget -q https://packages.microsoft.com/config/fedora/${VER}/prod.repo -O /tmp/microsoft-prod.repo
+      else
+        # RHEL/CentOS/Rocky/AlmaLinux
+        $SUDO dnf install -y https://packages.microsoft.com/config/rhel/${VER%%.*}/packages-microsoft-prod.rpm
+      fi
+      
+      if [[ -f /tmp/microsoft-prod.repo ]]; then
+        $SUDO mv /tmp/microsoft-prod.repo /etc/yum.repos.d/microsoft-prod.repo
+        $SUDO chown root:root /etc/yum.repos.d/microsoft-prod.repo
+      fi
+      
+      # Install .NET SDK
+      $SUDO dnf install -y dotnet-sdk-9.0
+      ;;
+      
+    arch|manjaro)
+      # .NET is in AUR, install manually or use dotnet-install script
+      echo -e "${YELLOW}⚠ .NET SDK installation on Arch requires manual steps${NC}"
+      echo "Install from AUR: yay -S dotnet-sdk"
+      echo "Or use: https://dot.net/v1/dotnet-install.sh"
+      ;;
+      
+    *)
+      echo -e "${YELLOW}⚠ Automatic .NET installation not supported for $OS${NC}"
+      echo "Please install manually: https://dotnet.microsoft.com/download/dotnet/9.0"
+      ;;
+  esac
+  
+  echo -e "${GREEN}✓ .NET SDK 9.0 installed${NC}"
+fi
+echo ""
+
+# Install Python 3
+echo "Installing Python 3 and pip..."
+if command -v python3 >/dev/null 2>&1; then
+  PYTHON_VERSION=$(python3 --version)
+  echo -e "${GREEN}✓ Python 3 already installed: $PYTHON_VERSION${NC}"
+else
+  case "$OS" in
+    ubuntu|debian|linuxmint|pop)
+      $SUDO apt-get install -y python3 python3-pip python3-venv
+      ;;
+    fedora|rhel|centos|rocky|almalinux)
+      $SUDO dnf install -y python3 python3-pip
+      ;;
+    arch|manjaro)
+      $SUDO pacman -S --noconfirm python python-pip
+      ;;
+  esac
+  echo -e "${GREEN}✓ Python 3 installed${NC}"
+fi
+echo ""
+
+# Install system utilities
+echo "Installing system utilities (ffmpeg, curl, wget, git, jq, sqlite3)..."
+case "$OS" in
+  ubuntu|debian|linuxmint|pop)
+    $SUDO apt-get install -y curl wget git ffmpeg jq sqlite3
+    ;;
+  fedora|rhel|centos|rocky|almalinux)
+    $SUDO dnf install -y curl wget git ffmpeg jq sqlite
+    ;;
+  arch|manjaro)
+    $SUDO pacman -S --noconfirm curl wget git ffmpeg jq sqlite
+    ;;
+esac
+echo -e "${GREEN}✓ System utilities installed${NC}"
+echo ""
+
+# Install NVIDIA Container Toolkit (if GPU detected)
+echo "Checking for NVIDIA GPU..."
+if command -v nvidia-smi >/dev/null 2>&1; then
+  echo -e "${GREEN}✓ NVIDIA GPU detected${NC}"
+  nvidia-smi --query-gpu=name,driver_version --format=csv,noheader
+  echo ""
+  
+  # Check if NVIDIA Container Toolkit is installed
+  if docker run --rm --gpus all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi >/dev/null 2>&1; then
+    echo -e "${GREEN}✓ NVIDIA Container Toolkit already configured${NC}"
+  else
+    echo "Installing NVIDIA Container Toolkit..."
+    case "$OS" in
+      ubuntu|debian|linuxmint|pop)
+        # Add NVIDIA repository
+        distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
+        if [[ "$OS" == "linuxmint" || "$OS" == "pop" ]]; then
+          # Map to Ubuntu version
+          if [[ "${VER%%.*}" -ge 21 ]]; then
+            distribution="ubuntu22.04"
+          else
+            distribution="ubuntu20.04"
+          fi
+        fi
+        
+        curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | $SUDO gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+        curl -s -L https://nvidia.github.io/libnvidia-container/$distribution/libnvidia-container.list | \
+          sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+          $SUDO tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+        
+        $SUDO apt-get update
+        $SUDO apt-get install -y nvidia-container-toolkit
+        ;;
+        
+      fedora|rhel|centos|rocky|almalinux)
+        distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
+        curl -s -L https://nvidia.github.io/libnvidia-container/$distribution/libnvidia-container.repo | \
+          $SUDO tee /etc/yum.repos.d/nvidia-container-toolkit.repo
+        $SUDO dnf install -y nvidia-container-toolkit
+        ;;
+    esac
+    
+    # Configure Docker to use NVIDIA runtime
+    $SUDO nvidia-ctk runtime configure --runtime=docker
+    $SUDO systemctl restart docker
+    
+    echo -e "${GREEN}✓ NVIDIA Container Toolkit installed${NC}"
+  fi
+else
+  echo -e "${YELLOW}⚠ No NVIDIA GPU detected${NC}"
+  echo "  GPU acceleration will not be available."
+  echo "  System will use CPU for processing (much slower)."
+fi
+echo ""
+
+echo -e "${GREEN}✓ All system dependencies installed!${NC}"
+echo ""
+
 # Step 1: Run verification
-echo -e "${BLUE}Step 1: Verifying system prerequisites...${NC}"
+echo "=========================================================================="
+echo -e "${BLUE}Step 1: Verifying installation...${NC}"
 echo "=========================================================================="
 if [[ -f "${REPO_DIR}/scripts/verify_setup.py" ]]; then
   if python3 "${REPO_DIR}/scripts/verify_setup.py"; then
     echo -e "${GREEN}✓ Verification passed${NC}"
   else
-    echo -e "${YELLOW}⚠ Some checks failed. Continuing anyway...${NC}"
-    echo "  (You may need to install missing components)"
+    echo -e "${YELLOW}⚠ Some checks failed, but continuing...${NC}"
     sleep 2
   fi
 else
   echo -e "${YELLOW}⚠ verify_setup.py not found, skipping verification${NC}"
 fi
 echo ""
-
-# Basic prerequisites check
-if ! command -v docker >/dev/null 2>&1; then
-  echo -e "${RED}✗ Docker is not installed or not in PATH.${NC}" >&2
-  echo "Please install Docker first: https://docs.docker.com/engine/install/"
-  exit 1
-fi
-
-if ! docker compose version >/dev/null 2>&1; then
-  echo -e "${RED}✗ Docker Compose v2 not found. Install or upgrade Docker.${NC}" >&2
-  echo "You may be using legacy docker-compose. Upgrade to Docker Compose v2."
-  exit 1
-fi
 
 # Step 2: Build Jellyfin plugin (if applicable)
 echo -e "${BLUE}Step 2: Building Jellyfin plugin (if available)...${NC}"
