@@ -107,19 +107,19 @@ else
       
       # Install Docker
       $SUDO apt-get update
-      $SUDO apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+      $SUDO apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin #docker-compose-v2
       ;;
       
     fedora)
       $SUDO dnf -y install dnf-plugins-core
       $SUDO dnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo
-      $SUDO dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+      $SUDO dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin #docker-compose-plugin
       ;;
       
     rhel|centos|rocky|almalinux)
       $SUDO dnf -y install dnf-plugins-core
       $SUDO dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
-      $SUDO dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+      $SUDO dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin #docker-compose-plugin
       ;;
       
     arch|manjaro)
@@ -362,6 +362,8 @@ if [[ -z "${JELLYFIN_LIB_DIR}" ]]; then
       break
     fi
   done
+
+  chown -R jellyfin:jellyfin "${JELLYFIN_LIB_DIR}" ; chmod 644 "${JELLYFIN_PLUGIN_DIR}/*.dll" ; chmod 755 "${JELLYFIN_PLUGIN_DIR}/*.sh"
 fi
 
 if [[ -n "${JELLYFIN_LIB_DIR}" ]]; then
@@ -418,6 +420,7 @@ if [[ -d "${WEBHOOK_PLUGIN_SRC}" ]]; then
     echo -e "${YELLOW}⚠ Webhook plugin build failed (non-critical)${NC}"
     echo "  You can build manually with: cd ${WEBHOOK_PLUGIN_SRC} && dotnet build -c Release"
   fi
+
 else
   echo -e "${YELLOW}⚠ Webhook plugin source not found at: ${WEBHOOK_PLUGIN_SRC}${NC}"
   echo "  The patched webhook plugin is required for {{Path}} variable support."
