@@ -11,12 +11,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Reference Include="MediaBrowser.Common">
-      <HintPath>$(JellyfinLibDir)/MediaBrowser.Common.dll</HintPath>
-    </Reference>
-    <Reference Include="MediaBrowser.Model">
-      <HintPath>$(JellyfinLibDir)/MediaBrowser.Model.dll</HintPath>
-    </Reference>
+    <PackageReference Include="Jellyfin.Controller" Version="10.11.*" />
   </ItemGroup>
 
   <ItemGroup>
