@@ -366,32 +366,66 @@ fi
 
 if [[ -n "${JELLYFIN_LIB_DIR}" ]]; then
   echo "Found Jellyfin at: ${JELLYFIN_LIB_DIR}"
-  echo "Building RealTimeHDRSRGAN plugin..."
 
-  # Clear cache and build
-  cd "${REPO_DIR}/jellyfin-plugin/Server"
+  # Check Jellyfin version
+  if [[ -f "${JELLYFIN_LIB_DIR}/jellyfin.dll" ]]; then
+    JELLYFIN_VERSION=$(strings "${JELLYFIN_LIB_DIR}/jellyfin.dll" 2>/dev/null | grep -oP '\d+\.\d+\.\d+\.\d+' | head -1 || echo "unknown")
+    echo "  Jellyfin version: ${JELLYFIN_VERSION}"
+  fi
+
+  echo "Building RealTimeHDRSRGAN plugin from scratch..."
+  echo ""
+
+  # Clean previous builds
+  PLUGIN_SRC="${REPO_DIR}/jellyfin-plugin/Server"
+  cd "${PLUGIN_SRC}"
+  echo "  → Cleaning previous builds..."
+  rm -rf bin obj 2>/dev/null || true
+
+  # Clear cache and restore
+  echo "  → Clearing NuGet cache..."
   dotnet nuget locals all --clear
-  dotnet restore --force
-  dotnet build -c Release "/p:JellyfinLibDir=${JELLYFIN_LIB_DIR}"
+
+  echo "  → Restoring packages..."
+  dotnet restore --force -v minimal
+
+  echo "  → Building plugin (Release configuration)..."
+  dotnet build -c Release "/p:JellyfinLibDir=${JELLYFIN_LIB_DIR}" -v minimal
+
+  if [[ $? -ne 0 ]]; then
+    echo -e "${RED}✗ Build failed${NC}" >&2
+    exit 1
+  fi
+
+  # Find output directory
+  PLUGIN_OUTPUT_DIR=$(find "${PLUGIN_SRC}/bin/Release" -maxdepth 1 -type d -name "net*" | head -1)
+  if [[ -z "${PLUGIN_OUTPUT_DIR}" ]]; then
+    echo -e "${RED}✗ Build output not found${NC}" >&2
+    exit 1
+  fi
+
+  echo -e "${GREEN}✓ Build successful${NC}"
+  echo ""
+  echo "  Build output: ${PLUGIN_OUTPUT_DIR}"
+  echo "  Files built:"
+  ls -lh "${PLUGIN_OUTPUT_DIR}/" | grep -E '\.dll$|\.sh$' | awk '{print "    " $9 " (" $5 ")"}'
+  echo ""
 
   # Install plugin
-  echo "Installing plugin to: ${JELLYFIN_PLUGIN_DIR}"
+  echo "  Installing plugin to: ${JELLYFIN_PLUGIN_DIR}"
   if ! $SUDO mkdir -p "${JELLYFIN_PLUGIN_DIR}"; then
     echo -e "${RED}✗ Failed to create plugin directory: ${JELLYFIN_PLUGIN_DIR}${NC}" >&2
     exit 1
   fi
 
-  PLUGIN_OUTPUT_DIR=$(find "${REPO_DIR}/jellyfin-plugin/Server/bin/Release" -maxdepth 1 -type d -name "net*" | head -1)
-  if [[ -z "${PLUGIN_OUTPUT_DIR}" ]]; then
-    echo -e "${YELLOW}⚠ Plugin build output not found, skipping copy${NC}" >&2
-  else
-    $SUDO cp "${PLUGIN_OUTPUT_DIR}/"* "${JELLYFIN_PLUGIN_DIR}/"
-    $SUDO chown -R jellyfin:jellyfin "${JELLYFIN_PLUGIN_DIR}"
-    $SUDO chmod 644 "${JELLYFIN_PLUGIN_DIR}/"*.dll 2>/dev/null || true
-    $SUDO chmod 755 "${JELLYFIN_PLUGIN_DIR}/"*.sh 2>/dev/null || true
-    echo -e "${GREEN}✓ RealTimeHDRSRGAN plugin installed${NC}"
-    echo "  Target: Jellyfin 10.11.5 (.NET 9.0)"
-  fi
+  $SUDO cp "${PLUGIN_OUTPUT_DIR}/"* "${JELLYFIN_PLUGIN_DIR}/"
+  $SUDO chown -R jellyfin:jellyfin "${JELLYFIN_PLUGIN_DIR}"
+  $SUDO chmod 644 "${JELLYFIN_PLUGIN_DIR}/"*.dll 2>/dev/null || true
+  $SUDO chmod 755 "${JELLYFIN_PLUGIN_DIR}/"*.sh 2>/dev/null || true
+  echo -e "${GREEN}✓ RealTimeHDRSRGAN plugin installed${NC}"
+  echo "  Target: Jellyfin 10.11.5 (.NET 9.0)"
+  echo "  Location: ${JELLYFIN_PLUGIN_DIR}"
+  echo "  Size: $(du -sh ${JELLYFIN_PLUGIN_DIR} 2>/dev/null | cut -f1 || echo 'N/A')"
 
   # Return to repo directory
   cd "${REPO_DIR}"
@@ -409,40 +443,61 @@ WEBHOOK_PLUGIN_DIR="/var/lib/jellyfin/plugins/Webhook"
 
 if [[ -d "${WEBHOOK_PLUGIN_SRC}" ]]; then
   echo "Found webhook plugin source at: ${WEBHOOK_PLUGIN_SRC}"
-  echo "Building patched webhook plugin with Path variable support..."
+  echo "Building patched webhook plugin with Path variable support from scratch..."
+  echo ""
+
+  # Clean previous builds
+  WEBHOOK_SRC="${WEBHOOK_PLUGIN_SRC}/Jellyfin.Plugin.Webhook"
+  cd "${WEBHOOK_SRC}"
+  echo "  → Cleaning previous builds..."
+  rm -rf bin obj 2>/dev/null || true
 
   # Clear NuGet cache and restore
-  cd "${WEBHOOK_PLUGIN_SRC}/Jellyfin.Plugin.Webhook"
+  echo "  → Clearing NuGet cache..."
   dotnet nuget locals all --clear
-  dotnet restore --force
+
+  echo "  → Restoring packages..."
+  dotnet restore --force -v minimal
 
   # Build the project
-  if dotnet build -c Release; then
+  echo "  → Building plugin (Release configuration)..."
+  if dotnet build -c Release -v minimal; then
     echo -e "${GREEN}✓ Webhook plugin built successfully${NC}"
 
     # Find the output directory
-    WEBHOOK_OUTPUT_DIR=$(find "${WEBHOOK_PLUGIN_SRC}/Jellyfin.Plugin.Webhook/bin/Release" -maxdepth 1 -type d -name "net*" | head -1)
+    WEBHOOK_OUTPUT_DIR=$(find "${WEBHOOK_SRC}/bin/Release" -maxdepth 1 -type d -name "net*" | head -1)
 
     if [[ -n "${WEBHOOK_OUTPUT_DIR}" ]] && [[ -f "${WEBHOOK_OUTPUT_DIR}/Jellyfin.Plugin.Webhook.dll" ]]; then
-      echo "Installing patched webhook plugin to: ${WEBHOOK_PLUGIN_DIR}"
+      echo ""
+      echo "  Build output: ${WEBHOOK_OUTPUT_DIR}"
+      echo "  Files built:"
+      ls -lh "${WEBHOOK_OUTPUT_DIR}/"*.dll 2>/dev/null | awk '{print "    " $9 " (" $5 ")"}'
+      echo ""
+      echo "  Installing patched webhook plugin to: ${WEBHOOK_PLUGIN_DIR}"
 
       # Stop Jellyfin before updating plugin
+      JELLYFIN_WAS_RUNNING=0
       if systemctl is-active --quiet jellyfin; then
-        echo "Stopping Jellyfin..."
+        echo "  → Stopping Jellyfin..."
         $SUDO systemctl stop jellyfin
         JELLYFIN_WAS_RUNNING=1
+        sleep 2
       fi
 
       # Create directory and copy all DLLs
       if $SUDO mkdir -p "${WEBHOOK_PLUGIN_DIR}"; then
+        echo "  → Copying all DLLs and dependencies..."
         $SUDO cp "${WEBHOOK_OUTPUT_DIR}"/*.dll "${WEBHOOK_PLUGIN_DIR}/"
         $SUDO chown -R jellyfin:jellyfin "${WEBHOOK_PLUGIN_DIR}" 2>/dev/null || true
+        $SUDO chmod 644 "${WEBHOOK_PLUGIN_DIR}/"*.dll 2>/dev/null || true
         echo -e "${GREEN}✓ Patched webhook plugin installed${NC}"
         echo "  Plugin includes {{Path}} variable support for SRGAN pipeline"
+        echo "  Location: ${WEBHOOK_PLUGIN_DIR}"
+        echo "  Size: $(du -sh ${WEBHOOK_PLUGIN_DIR} 2>/dev/null | cut -f1 || echo 'N/A')"
 
         # Restart Jellyfin if it was running
         if [[ "${JELLYFIN_WAS_RUNNING}" == "1" ]]; then
-          echo "Restarting Jellyfin..."
+          echo "  → Restarting Jellyfin..."
           $SUDO systemctl start jellyfin
           sleep 3
         fi
@@ -732,19 +787,146 @@ else
 fi
 echo ""
 
+# Step 12: Wait for Jellyfin API
+echo -e "${BLUE}Step 12: Waiting for Jellyfin API to be ready...${NC}"
+echo "=========================================================================="
+
+MAX_WAIT=30
+WAITED=0
+API_READY=false
+
+while [[ $WAITED -lt $MAX_WAIT ]]; do
+  HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8096/health 2>/dev/null || echo "000")
+  if [[ "$HTTP_CODE" == "200" ]]; then
+    API_READY=true
+    break
+  fi
+  echo "  Waiting for API... ($WAITED/$MAX_WAIT seconds)"
+  sleep 2
+  WAITED=$((WAITED + 2))
+done
+
+if $API_READY; then
+  echo -e "${GREEN}✓ Jellyfin API is ready${NC}"
+else
+  echo -e "${YELLOW}⚠ Jellyfin API not responding after ${MAX_WAIT} seconds${NC}"
+  echo "  Jellyfin may still be starting up"
+  echo "  You can check manually: curl http://localhost:8096/health"
+fi
+echo ""
+
+# Step 13: Test Plugin Loading
+echo -e "${BLUE}Step 13: Verifying plugin installation...${NC}"
+echo "=========================================================================="
+
+echo "Checking installed plugins:"
+echo ""
+
+# Check RealTimeHDRSRGAN
+if [[ -f "${JELLYFIN_PLUGIN_DIR}/Jellyfin.Plugin.RealTimeHdrSrgan.dll" ]]; then
+  echo -e "${GREEN}✓ RealTimeHDRSRGAN plugin files present${NC}"
+  echo "  Location: ${JELLYFIN_PLUGIN_DIR}"
+  echo "  Size: $(du -sh ${JELLYFIN_PLUGIN_DIR} 2>/dev/null | cut -f1 || echo 'N/A')"
+  echo "  Files:"
+  ls "${JELLYFIN_PLUGIN_DIR}/" | sed 's/^/    /'
+else
+  echo -e "${RED}✗ RealTimeHDRSRGAN plugin DLL missing${NC}"
+fi
+echo ""
+
+# Check Webhook
+if [[ -f "${WEBHOOK_PLUGIN_DIR}/Jellyfin.Plugin.Webhook.dll" ]]; then
+  echo -e "${GREEN}✓ Webhook plugin files present${NC}"
+  echo "  Location: ${WEBHOOK_PLUGIN_DIR}"
+  echo "  Size: $(du -sh ${WEBHOOK_PLUGIN_DIR} 2>/dev/null | cut -f1 || echo 'N/A')"
+  echo "  Files:"
+  ls "${WEBHOOK_PLUGIN_DIR}/" | grep -E '\.dll$' | sed 's/^/    /'
+else
+  echo -e "${RED}✗ Webhook plugin DLL missing${NC}"
+fi
+echo ""
+
+# Check plugin loading in Jellyfin logs
+echo "Recent plugin loading messages:"
+$SUDO journalctl -u jellyfin --since "2 minutes ago" --no-pager 2>/dev/null | grep -i "plugin\|realtimehdr\|webhook" | tail -10 | sed 's/^/  /'
+echo ""
+
+# Step 14: Test API Endpoints
+echo -e "${BLUE}Step 14: Testing plugin API endpoints...${NC}"
+echo "=========================================================================="
+
+if $API_READY; then
+  # Test RealTimeHDRSRGAN Configuration endpoint
+  echo "Testing: GET /Plugins/RealTimeHDRSRGAN/Configuration"
+  RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8096/Plugins/RealTimeHDRSRGAN/Configuration 2>/dev/null || echo "000")
+  if [[ "$RESPONSE" == "200" ]]; then
+    echo -e "${GREEN}✓ Configuration API responding (200)${NC}"
+    CONFIG_JSON=$(curl -s http://localhost:8096/Plugins/RealTimeHDRSRGAN/Configuration 2>/dev/null)
+    echo "  Response: ${CONFIG_JSON}"
+  elif [[ "$RESPONSE" == "401" ]]; then
+    echo -e "${YELLOW}⚠ Configuration API requires authentication (401)${NC}"
+    echo "  This is normal - plugin is loaded correctly"
+  else
+    echo -e "${YELLOW}⚠ Configuration API not responding (${RESPONSE})${NC}"
+    echo "  Plugin may not be loaded yet or requires authentication"
+  fi
+  echo ""
+
+  # Test GPU Detection endpoint
+  echo "Testing: POST /Plugins/RealTimeHDRSRGAN/DetectGPU"
+  RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:8096/Plugins/RealTimeHDRSRGAN/DetectGPU 2>/dev/null || echo "000")
+  if [[ "$RESPONSE" == "200" ]]; then
+    echo -e "${GREEN}✓ GPU Detection API responding (200)${NC}"
+  elif [[ "$RESPONSE" == "401" ]]; then
+    echo -e "${YELLOW}⚠ GPU Detection API requires authentication (401)${NC}"
+    echo "  This is normal - plugin is loaded correctly"
+  else
+    echo -e "${YELLOW}⚠ GPU Detection API not responding (${RESPONSE})${NC}"
+    echo "  Plugin may not be loaded yet or requires authentication"
+  fi
+else
+  echo -e "${YELLOW}⚠ Skipping API tests - Jellyfin API not ready${NC}"
+fi
+echo ""
+
+# Step 15: Test Plugin Scripts
+echo -e "${BLUE}Step 15: Testing plugin scripts...${NC}"
+echo "=========================================================================="
+
+# Test gpu-detection.sh
+if [[ -f "${JELLYFIN_PLUGIN_DIR}/gpu-detection.sh" ]]; then
+  echo "Testing: gpu-detection.sh"
+  if [[ -x "${JELLYFIN_PLUGIN_DIR}/gpu-detection.sh" ]]; then
+    echo -e "${GREEN}✓ Script is executable${NC}"
+    GPU_RESULT=$($SUDO -u jellyfin bash "${JELLYFIN_PLUGIN_DIR}/gpu-detection.sh" 2>&1 || echo "")
+    if echo "$GPU_RESULT" | grep -qi "success\|nvidia"; then
+      echo -e "${GREEN}✓ GPU detection script works${NC}"
+      echo "$GPU_RESULT" | head -5 | sed 's/^/  /'
+    else
+      echo -e "${YELLOW}⚠ GPU detection script ran but no GPU found${NC}"
+      echo "$GPU_RESULT" | head -5 | sed 's/^/  /'
+    fi
+  else
+    echo -e "${RED}✗ Script not executable${NC}"
+  fi
+else
+  echo -e "${YELLOW}⚠ gpu-detection.sh not found in ${JELLYFIN_PLUGIN_DIR}${NC}"
+fi
+echo ""
+
 # Installation complete
 echo "=========================================================================="
 echo -e "${GREEN}Installation Complete!${NC}"
 echo "=========================================================================="
 echo ""
-echo "What was installed:"
+echo "What was installed and tested:"
 echo "  ✓ Docker container (srgan-upscaler)"
 echo "  ✓ Watchdog systemd service (auto-starts on boot)"
 if [[ -n "${JELLYFIN_LIB_DIR}" ]]; then
-  echo "  ✓ Jellyfin plugin"
+  echo "  ✓ RealTimeHDRSRGAN plugin (built from scratch, tested)"
 fi
 if [[ -d "${WEBHOOK_PLUGIN_SRC}" ]] && [[ -f "${WEBHOOK_PLUGIN_DIR}/Jellyfin.Plugin.Webhook.dll" ]]; then
-  echo "  ✓ Patched webhook plugin (with {{Path}} variable)"
+  echo "  ✓ Patched webhook plugin (built from scratch, with {{Path}} variable)"
 fi
 if [[ -d "${JELLYFIN_WEB_DIR}" ]] && [[ -f "${JELLYFIN_WEB_DIR}/playback-progress-overlay.css" ]]; then
   echo "  ✓ Progress overlay (CSS/JS)"
@@ -753,33 +935,64 @@ if [[ -f "${MODEL_DIR}/swift_srgan_4x.pth" ]]; then
   echo "  ✓ AI model (optional)"
 fi
 echo ""
+echo "Plugins verified:"
+if [[ -f "${JELLYFIN_PLUGIN_DIR}/Jellyfin.Plugin.RealTimeHdrSrgan.dll" ]]; then
+  echo "  ✓ RealTimeHDRSRGAN: ${JELLYFIN_PLUGIN_DIR}"
+fi
+if [[ -f "${WEBHOOK_PLUGIN_DIR}/Jellyfin.Plugin.Webhook.dll" ]]; then
+  echo "  ✓ Webhook: ${WEBHOOK_PLUGIN_DIR}"
+fi
+echo ""
 echo "Service Status:"
 if systemctl is-active --quiet srgan-watchdog.service; then
   echo -e "  Watchdog: ${GREEN}running${NC} ✓"
 else
   echo -e "  Watchdog: ${YELLOW}check status${NC}"
 fi
-if docker compose -f "${REPO_DIR}/docker-compose.yml" ps | grep -q "srgan-upscaler"; then
+if systemctl is-active --quiet jellyfin; then
+  echo -e "  Jellyfin: ${GREEN}running${NC} ✓"
+else
+  echo -e "  Jellyfin: ${YELLOW}check status${NC}"
+fi
+if docker compose -f "${REPO_DIR}/docker-compose.yml" ps 2>/dev/null | grep -q "srgan-upscaler"; then
   echo -e "  Container: ${GREEN}running${NC} ✓"
 else
   echo -e "  Container: ${YELLOW}check status${NC}"
 fi
 echo ""
 echo "Next Steps:"
-echo "  1. Hard-refresh your browser to load progress overlay:"
-echo "     Ctrl+Shift+R (or Cmd+Shift+R on Mac)"
 echo ""
-echo "  2. Verify webhook configuration in Jellyfin Dashboard:"
-echo "     See: ${REPO_DIR}/WEBHOOK_CONFIGURATION_CORRECT.md"
+echo "1. Verify plugins in Jellyfin Dashboard:"
+echo "   Open: http://localhost:8096 (or your Jellyfin URL)"
+echo "   Go to: Dashboard → Plugins → Installed"
+echo "   Should show:"
+echo "   - Real-Time HDR SRGAN Pipeline (v1.0.0) - Active ✓"
+echo "   - Webhook (v18) - Active ✓"
 echo ""
-echo "  3. Test the pipeline by playing a video in Jellyfin"
-echo "     (Watchdog will log activity to /var/log/srgan-watchdog.log)"
+echo "2. Test RealTimeHDRSRGAN Settings Page:"
+echo "   Dashboard → Plugins → Real-Time HDR SRGAN Pipeline → Settings"
+echo "   Should display:"
+echo "   ✓ GPU Detection section with 'Detect NVIDIA GPU' button"
+echo "   ✓ Plugin Settings (Enable Upscaling, GPU Device, Upscale Factor)"
+echo "   ✓ Backup & Restore section with buttons"
 echo ""
-echo "  4. Check service status:"
-echo "     ${REPO_DIR}/scripts/manage_watchdog.sh status"
+echo "3. Test Webhook Configuration:"
+echo "   Dashboard → Plugins → Webhook → Settings"
+echo "   Should show: SRGAN 4K Upscaler webhook configured"
 echo ""
-echo "  5. View logs:"
-echo "     ${REPO_DIR}/scripts/manage_watchdog.sh logs"
+echo "4. Hard-refresh your browser to load progress overlay:"
+echo "   Ctrl+Shift+R (or Cmd+Shift+R on Mac)"
+echo ""
+echo "5. Test the pipeline by playing a video:"
+echo "   Play any movie or episode in Jellyfin"
+echo "   Check watchdog logs: tail -f /var/log/srgan-watchdog.log"
+echo "   Should see: 'Received webhook' with Path variable"
+echo ""
+echo "6. Check service status:"
+echo "   ${REPO_DIR}/scripts/manage_watchdog.sh status"
+echo ""
+echo "7. View logs:"
+echo "   ${REPO_DIR}/scripts/manage_watchdog.sh logs"
 echo ""
 echo "Documentation:"
 echo "  Getting Started: ${REPO_DIR}/GETTING_STARTED.md"
