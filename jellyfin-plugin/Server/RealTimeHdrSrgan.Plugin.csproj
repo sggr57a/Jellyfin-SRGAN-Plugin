@@ -17,7 +17,6 @@
 
   <ItemGroup>
     <EmbeddedResource Include="..\ConfigurationPage.html" Link="ConfigurationPage.html" />
-    <EmbeddedResource Include="..\ConfigurationPage.js" Link="ConfigurationPage.js" />
   </ItemGroup>
 
   <ItemGroup>
