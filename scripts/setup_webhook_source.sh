@@ -38,10 +38,22 @@ cp -r temp-webhook/Jellyfin.Plugin.Webhook/* "${WEBHOOK_DIR}/Jellyfin.Plugin.Web
 
 # Restore our custom files (with updated versions)
 echo "Restoring custom configuration files..."
-cp /tmp/webhook-backup/Jellyfin.Plugin.Webhook.csproj "${WEBHOOK_DIR}/Jellyfin.Plugin.Webhook/" 2>/dev/null || true
-cp /tmp/webhook-backup/NuGet.Config "${WEBHOOK_DIR}/Jellyfin.Plugin.Webhook/" 2>/dev/null || true
-cp /tmp/webhook-backup/build.yaml "${WEBHOOK_DIR}/" 2>/dev/null || true
-cp /tmp/webhook-backup/Directory.Build.props "${WEBHOOK_DIR}/" 2>/dev/null || true
+if [ -f /tmp/webhook-backup/Jellyfin.Plugin.Webhook.csproj ]; then
+    cp /tmp/webhook-backup/Jellyfin.Plugin.Webhook.csproj "${WEBHOOK_DIR}/Jellyfin.Plugin.Webhook/"
+    echo "  ✓ Restored custom .csproj (with build fix)"
+fi
+if [ -f /tmp/webhook-backup/NuGet.Config ]; then
+    cp /tmp/webhook-backup/NuGet.Config "${WEBHOOK_DIR}/Jellyfin.Plugin.Webhook/"
+    echo "  ✓ Restored custom NuGet.Config"
+fi
+if [ -f /tmp/webhook-backup/build.yaml ]; then
+    cp /tmp/webhook-backup/build.yaml "${WEBHOOK_DIR}/"
+    echo "  ✓ Restored custom build.yaml"
+fi
+if [ -f /tmp/webhook-backup/Directory.Build.props ]; then
+    cp /tmp/webhook-backup/Directory.Build.props "${WEBHOOK_DIR}/"
+    echo "  ✓ Restored custom Directory.Build.props"
+fi
 
 # Apply Path variable patch
 echo "Applying {{Path}} variable patch..."
