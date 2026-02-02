@@ -23,18 +23,12 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
 
     public IEnumerable<PluginPageInfo> GetPages()
     {
-        var basePath = GetType().Namespace ?? string.Empty;
         return new[]
         {
             new PluginPageInfo
             {
-                Name = "ConfigurationPage",
-                EmbeddedResourcePath = $"{basePath}.ConfigurationPage.html"
-            },
-            new PluginPageInfo
-            {
-                Name = "ConfigurationPage.js",
-                EmbeddedResourcePath = $"{basePath}.ConfigurationPage.js"
+                Name = this.Name,
+                EmbeddedResourcePath = GetType().Namespace + ".ConfigurationPage.html"
             }
         };
     }
