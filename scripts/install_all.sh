@@ -91,52 +91,52 @@ else
     ubuntu|debian|linuxmint|pop)
       # Install prerequisites
       $SUDO apt-get install -y ca-certificates curl gnupg lsb-release
-      
+
       # Add Docker's official GPG key
       $SUDO install -m 0755 -d /etc/apt/keyrings
       if [[ ! -f /etc/apt/keyrings/docker.gpg ]]; then
         curl -fsSL https://download.docker.com/linux/${OS}/gpg | $SUDO gpg --dearmor -o /etc/apt/keyrings/docker.gpg
         $SUDO chmod a+r /etc/apt/keyrings/docker.gpg
       fi
-      
+
       # Set up repository
       echo \
         "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${OS} \
         $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
         $SUDO tee /etc/apt/sources.list.d/docker.list > /dev/null
-      
+
       # Install Docker
       $SUDO apt-get update
       $SUDO apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin #docker-compose-v2
       ;;
-      
+
     fedora)
       $SUDO dnf -y install dnf-plugins-core
       $SUDO dnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo
       $SUDO dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin #docker-compose-plugin
       ;;
-      
+
     rhel|centos|rocky|almalinux)
       $SUDO dnf -y install dnf-plugins-core
       $SUDO dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
       $SUDO dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin #docker-compose-plugin
       ;;
-      
+
     arch|manjaro)
       $SUDO pacman -S --noconfirm docker docker-compose
       ;;
-      
+
     *)
       echo -e "${RED}✗ Automatic Docker installation not supported for $OS${NC}"
       echo "Please install Docker manually: https://docs.docker.com/engine/install/"
       exit 1
       ;;
   esac
-  
+
   # Start and enable Docker
   $SUDO systemctl start docker
   $SUDO systemctl enable docker
-  
+
   # Add current user to docker group
   if [[ "$CURRENT_USER" != "root" ]]; then
     $SUDO usermod -aG docker "$CURRENT_USER"
@@ -144,7 +144,7 @@ else
     echo "  You may need to log out and back in for this to take effect."
     echo "  Or run: newgrp docker"
   fi
-  
+
   echo -e "${GREEN}✓ Docker installed successfully${NC}"
 fi
 echo ""
@@ -193,15 +193,15 @@ else
         # For Debian
         wget -q https://packages.microsoft.com/config/debian/${VER}/packages-microsoft-prod.deb -O /tmp/${PACKAGES_MICROSOFT_PROD_DEB}
       fi
-      
+
       $SUDO dpkg -i /tmp/${PACKAGES_MICROSOFT_PROD_DEB}
       rm /tmp/${PACKAGES_MICROSOFT_PROD_DEB}
-      
+
       # Install .NET SDK
       $SUDO apt-get update
       $SUDO apt-get install -y dotnet-sdk-9.0
       ;;
-      
+
     fedora|rhel|centos|rocky|almalinux)
       # Add Microsoft repository
       $SUDO rpm --import https://packages.microsoft.com/keys/microsoft.asc
@@ -211,29 +211,29 @@ else
         # RHEL/CentOS/Rocky/AlmaLinux
         $SUDO dnf install -y https://packages.microsoft.com/config/rhel/${VER%%.*}/packages-microsoft-prod.rpm
       fi
-      
+
       if [[ -f /tmp/microsoft-prod.repo ]]; then
         $SUDO mv /tmp/microsoft-prod.repo /etc/yum.repos.d/microsoft-prod.repo
         $SUDO chown root:root /etc/yum.repos.d/microsoft-prod.repo
       fi
-      
+
       # Install .NET SDK
       $SUDO dnf install -y dotnet-sdk-9.0
       ;;
-      
+
     arch|manjaro)
       # .NET is in AUR, install manually or use dotnet-install script
       echo -e "${YELLOW}⚠ .NET SDK installation on Arch requires manual steps${NC}"
       echo "Install from AUR: yay -S dotnet-sdk"
       echo "Or use: https://dot.net/v1/dotnet-install.sh"
       ;;
-      
+
     *)
       echo -e "${YELLOW}⚠ Automatic .NET installation not supported for $OS${NC}"
       echo "Please install manually: https://dotnet.microsoft.com/download/dotnet/9.0"
       ;;
   esac
-  
+
   echo -e "${GREEN}✓ .NET SDK 9.0 installed${NC}"
 fi
 echo ""
@@ -281,7 +281,7 @@ if command -v nvidia-smi >/dev/null 2>&1; then
   echo -e "${GREEN}✓ NVIDIA GPU detected${NC}"
   nvidia-smi --query-gpu=name,driver_version --format=csv,noheader
   echo ""
-  
+
   # Check if NVIDIA Container Toolkit is installed
   if docker run --rm --gpus all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi >/dev/null 2>&1; then
     echo -e "${GREEN}✓ NVIDIA Container Toolkit already configured${NC}"
@@ -299,16 +299,16 @@ if command -v nvidia-smi >/dev/null 2>&1; then
             distribution="ubuntu20.04"
           fi
         fi
-        
+
         curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | $SUDO gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
         curl -s -L https://nvidia.github.io/libnvidia-container/$distribution/libnvidia-container.list | \
           sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
           $SUDO tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
-        
+
         $SUDO apt-get update
         $SUDO apt-get install -y nvidia-container-toolkit
         ;;
-        
+
       fedora|rhel|centos|rocky|almalinux)
         distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
         curl -s -L https://nvidia.github.io/libnvidia-container/$distribution/libnvidia-container.repo | \
@@ -316,11 +316,11 @@ if command -v nvidia-smi >/dev/null 2>&1; then
         $SUDO dnf install -y nvidia-container-toolkit
         ;;
     esac
-    
+
     # Configure Docker to use NVIDIA runtime
     $SUDO nvidia-ctk runtime configure --runtime=docker
     $SUDO systemctl restart docker
-    
+
     echo -e "${GREEN}✓ NVIDIA Container Toolkit installed${NC}"
   fi
 else
@@ -350,7 +350,7 @@ fi
 echo ""
 
 # Step 2: Build Jellyfin plugin (if applicable)
-echo -e "${BLUE}Step 2: Building Jellyfin plugin (if available)...${NC}"
+echo -e "${BLUE}Step 2: Building RealTimeHDRSRGAN plugin (if available)...${NC}"
 echo "=========================================================================="
 JELLYFIN_LIB_DIR="${JELLYFIN_LIB_DIR:-}"
 JELLYFIN_PLUGIN_DIR="${JELLYFIN_PLUGIN_DIR:-/var/lib/jellyfin/plugins/RealTimeHDRSRGAN}"
@@ -362,26 +362,39 @@ if [[ -z "${JELLYFIN_LIB_DIR}" ]]; then
       break
     fi
   done
-
-  chown -R jellyfin:jellyfin "${JELLYFIN_LIB_DIR}" ; chmod 644 "${JELLYFIN_PLUGIN_DIR}/*.dll" ; chmod 755 "${JELLYFIN_PLUGIN_DIR}/*.sh"
 fi
 
 if [[ -n "${JELLYFIN_LIB_DIR}" ]]; then
   echo "Found Jellyfin at: ${JELLYFIN_LIB_DIR}"
-  echo "Building plugin..."
-  dotnet build "${REPO_DIR}/jellyfin-plugin/Server/RealTimeHdrSrgan.Plugin.csproj" -c Release "/p:JellyfinLibDir=${JELLYFIN_LIB_DIR}"
+  echo "Building RealTimeHDRSRGAN plugin..."
+
+  # Clear cache and build
+  cd "${REPO_DIR}/jellyfin-plugin/Server"
+  dotnet nuget locals all --clear
+  dotnet restore --force
+  dotnet build -c Release "/p:JellyfinLibDir=${JELLYFIN_LIB_DIR}"
+
+  # Install plugin
   echo "Installing plugin to: ${JELLYFIN_PLUGIN_DIR}"
-  if ! sudo mkdir -p "${JELLYFIN_PLUGIN_DIR}"; then
+  if ! $SUDO mkdir -p "${JELLYFIN_PLUGIN_DIR}"; then
     echo -e "${RED}✗ Failed to create plugin directory: ${JELLYFIN_PLUGIN_DIR}${NC}" >&2
     exit 1
   fi
+
   PLUGIN_OUTPUT_DIR=$(find "${REPO_DIR}/jellyfin-plugin/Server/bin/Release" -maxdepth 1 -type d -name "net*" | head -1)
   if [[ -z "${PLUGIN_OUTPUT_DIR}" ]]; then
     echo -e "${YELLOW}⚠ Plugin build output not found, skipping copy${NC}" >&2
   else
-    sudo cp "${PLUGIN_OUTPUT_DIR}/"* "${JELLYFIN_PLUGIN_DIR}/"
-    echo -e "${GREEN}✓ Plugin installed${NC}"
+    $SUDO cp "${PLUGIN_OUTPUT_DIR}/"* "${JELLYFIN_PLUGIN_DIR}/"
+    $SUDO chown -R jellyfin:jellyfin "${JELLYFIN_PLUGIN_DIR}"
+    $SUDO chmod 644 "${JELLYFIN_PLUGIN_DIR}/"*.dll 2>/dev/null || true
+    $SUDO chmod 755 "${JELLYFIN_PLUGIN_DIR}/"*.sh 2>/dev/null || true
+    echo -e "${GREEN}✓ RealTimeHDRSRGAN plugin installed${NC}"
+    echo "  Target: Jellyfin 10.11.5 (.NET 9.0)"
   fi
+
+  # Return to repo directory
+  cd "${REPO_DIR}"
 else
   echo -e "${YELLOW}⚠ Jellyfin not found, skipping plugin build${NC}"
   echo "  (Plugin can be built manually later if needed)"
@@ -392,40 +405,69 @@ echo ""
 echo -e "${BLUE}Step 2.3: Building patched Jellyfin webhook plugin...${NC}"
 echo "=========================================================================="
 WEBHOOK_PLUGIN_SRC="${REPO_DIR}/jellyfin-plugin-webhook"
-WEBHOOK_PLUGIN_DIR="${JELLYFIN_PLUGIN_DIR:-/var/lib/jellyfin/plugins}/Webhook"
+WEBHOOK_PLUGIN_DIR="/var/lib/jellyfin/plugins/Webhook"
 
 if [[ -d "${WEBHOOK_PLUGIN_SRC}" ]]; then
   echo "Found webhook plugin source at: ${WEBHOOK_PLUGIN_SRC}"
   echo "Building patched webhook plugin with Path variable support..."
-  
-  if dotnet build "${WEBHOOK_PLUGIN_SRC}/Jellyfin.Plugin.Webhook.sln" -c Release; then
+
+  # Clear NuGet cache and restore
+  cd "${WEBHOOK_PLUGIN_SRC}/Jellyfin.Plugin.Webhook"
+  dotnet nuget locals all --clear
+  dotnet restore --force
+
+  # Build the project
+  if dotnet build -c Release; then
     echo -e "${GREEN}✓ Webhook plugin built successfully${NC}"
-    
-    # Find the output DLL
-    WEBHOOK_DLL=$(find "${WEBHOOK_PLUGIN_SRC}" -path "*/bin/Release/net*/Jellyfin.Plugin.Webhook.dll" | head -1)
-    
-    if [[ -n "${WEBHOOK_DLL}" ]]; then
+
+    # Find the output directory
+    WEBHOOK_OUTPUT_DIR=$(find "${WEBHOOK_PLUGIN_SRC}/Jellyfin.Plugin.Webhook/bin/Release" -maxdepth 1 -type d -name "net*" | head -1)
+
+    if [[ -n "${WEBHOOK_OUTPUT_DIR}" ]] && [[ -f "${WEBHOOK_OUTPUT_DIR}/Jellyfin.Plugin.Webhook.dll" ]]; then
       echo "Installing patched webhook plugin to: ${WEBHOOK_PLUGIN_DIR}"
-      if ! sudo mkdir -p "${WEBHOOK_PLUGIN_DIR}"; then
-        echo -e "${RED}✗ Failed to create webhook plugin directory: ${WEBHOOK_PLUGIN_DIR}${NC}" >&2
-      else
-        sudo cp "${WEBHOOK_DLL}" "${WEBHOOK_PLUGIN_DIR}/"
+
+      # Stop Jellyfin before updating plugin
+      if systemctl is-active --quiet jellyfin; then
+        echo "Stopping Jellyfin..."
+        $SUDO systemctl stop jellyfin
+        JELLYFIN_WAS_RUNNING=1
+      fi
+
+      # Create directory and copy all DLLs
+      if $SUDO mkdir -p "${WEBHOOK_PLUGIN_DIR}"; then
+        $SUDO cp "${WEBHOOK_OUTPUT_DIR}"/*.dll "${WEBHOOK_PLUGIN_DIR}/"
+        $SUDO chown -R jellyfin:jellyfin "${WEBHOOK_PLUGIN_DIR}" 2>/dev/null || true
         echo -e "${GREEN}✓ Patched webhook plugin installed${NC}"
-        echo "  Restart Jellyfin to load the patched plugin with {{Path}} variable support"
+        echo "  Plugin includes {{Path}} variable support for SRGAN pipeline"
+
+        # Restart Jellyfin if it was running
+        if [[ "${JELLYFIN_WAS_RUNNING}" == "1" ]]; then
+          echo "Restarting Jellyfin..."
+          $SUDO systemctl start jellyfin
+          sleep 3
+        fi
+      else
+        echo -e "${RED}✗ Failed to create webhook plugin directory: ${WEBHOOK_PLUGIN_DIR}${NC}" >&2
       fi
     else
       echo -e "${YELLOW}⚠ Webhook plugin DLL not found after build${NC}"
+      echo "  Build output directory: ${WEBHOOK_OUTPUT_DIR}"
     fi
   else
-    echo -e "${YELLOW}⚠ Webhook plugin build failed (non-critical)${NC}"
-    echo "  You can build manually with: cd ${WEBHOOK_PLUGIN_SRC} && dotnet build -c Release"
+    echo -e "${YELLOW}⚠ Webhook plugin build failed${NC}"
+    echo "  This is required for {{Path}} variable support."
+    echo "  Try building manually:"
+    echo "    cd ${WEBHOOK_PLUGIN_SRC}"
+    echo "    ./build-plugin.sh"
   fi
+
+  # Return to repo directory
+  cd "${REPO_DIR}"
 
 else
   echo -e "${YELLOW}⚠ Webhook plugin source not found at: ${WEBHOOK_PLUGIN_SRC}${NC}"
   echo "  The patched webhook plugin is required for {{Path}} variable support."
-  echo "  Clone it with: git clone https://github.com/jellyfin/jellyfin-plugin-webhook.git"
-  echo "  Then apply the Path variable patch from WEBHOOK_CONFIGURATION_CORRECT.md"
+  echo "  The standard Jellyfin webhook plugin does NOT expose file paths."
 fi
 echo ""
 
@@ -436,7 +478,7 @@ JELLYFIN_WEB_DIR="${JELLYFIN_WEB_DIR:-/usr/share/jellyfin/web}"
 
 if [[ -d "${JELLYFIN_WEB_DIR}" ]]; then
   echo "Found Jellyfin web directory at: ${JELLYFIN_WEB_DIR}"
-  
+
   # Copy CSS files
   if [[ -f "${REPO_DIR}/jellyfin-plugin/playback-progress-overlay.css" ]]; then
     echo "Installing progress overlay CSS..."
@@ -445,7 +487,7 @@ if [[ -d "${JELLYFIN_WEB_DIR}" ]]; then
   else
     echo -e "${YELLOW}⚠ playback-progress-overlay.css not found${NC}"
   fi
-  
+
   # Copy JavaScript file
   if [[ -f "${REPO_DIR}/jellyfin-plugin/playback-progress-overlay.js" ]]; then
     echo "Installing progress overlay JavaScript..."
@@ -454,14 +496,14 @@ if [[ -d "${JELLYFIN_WEB_DIR}" ]]; then
   else
     echo -e "${YELLOW}⚠ playback-progress-overlay.js not found${NC}"
   fi
-  
+
   # Copy optional centered CSS variant
   if [[ -f "${REPO_DIR}/jellyfin-plugin/playback-progress-overlay-centered.css" ]]; then
     echo "Installing centered overlay variant (optional)..."
     sudo cp "${REPO_DIR}/jellyfin-plugin/playback-progress-overlay-centered.css" "${JELLYFIN_WEB_DIR}/"
     echo -e "${GREEN}✓ playback-progress-overlay-centered.css installed${NC}"
   fi
-  
+
   echo ""
   echo "Overlay files installed to: ${JELLYFIN_WEB_DIR}"
   echo "Restart Jellyfin and refresh browser to see changes."
@@ -567,13 +609,126 @@ fi
 # Step 8: Install systemd watchdog service
 echo -e "${BLUE}Step 8: Installing watchdog systemd service...${NC}"
 echo "=========================================================================="
-if sudo bash "${REPO_DIR}/scripts/install_systemd_watchdog.sh" "${REPO_DIR}"; then
+if $SUDO bash "${REPO_DIR}/scripts/install_systemd_watchdog.sh" "${REPO_DIR}"; then
   echo -e "${GREEN}✓ Watchdog service installed and started${NC}"
 else
   echo -e "${RED}✗ Watchdog service installation failed${NC}"
   echo "  You can try installing manually:"
   echo "  sudo ./scripts/install_systemd_watchdog.sh"
   exit 1
+fi
+echo ""
+
+# Step 9: Configure webhook plugin
+echo -e "${BLUE}Step 9: Configuring Jellyfin webhook plugin...${NC}"
+echo "=========================================================================="
+WEBHOOK_CONFIG_PATH="/var/lib/jellyfin/plugins/configurations/Jellyfin.Plugin.Webhook.xml"
+
+if [[ -f "${WEBHOOK_PLUGIN_DIR}/Jellyfin.Plugin.Webhook.dll" ]]; then
+  echo "Patched webhook plugin detected, configuring for SRGAN pipeline..."
+
+  # Wait for webhook service to be ready
+  sleep 2
+
+  # Configure webhook using Python script
+  if [[ -f "${REPO_DIR}/scripts/configure_webhook.py" ]]; then
+    if $SUDO python3 "${REPO_DIR}/scripts/configure_webhook.py" "http://localhost:5000" "${WEBHOOK_CONFIG_PATH}"; then
+      echo -e "${GREEN}✓ Webhook configured successfully${NC}"
+      echo "  Webhook will trigger on: PlaybackStart"
+      echo "  Target endpoint: http://localhost:5000/upscale-trigger"
+
+      # Restart Jellyfin to load webhook configuration
+      if systemctl is-active --quiet jellyfin; then
+        echo "Restarting Jellyfin to apply webhook configuration..."
+        $SUDO systemctl restart jellyfin
+        echo -e "${GREEN}✓ Jellyfin restarted${NC}"
+      fi
+    else
+      echo -e "${YELLOW}⚠ Webhook configuration failed (non-critical)${NC}"
+      echo "  You can configure manually via Jellyfin Dashboard → Plugins → Webhook"
+    fi
+  else
+    echo -e "${YELLOW}⚠ configure_webhook.py not found${NC}"
+    echo "  Configure webhook manually via Jellyfin Dashboard"
+  fi
+else
+  echo -e "${YELLOW}⚠ Patched webhook plugin not installed${NC}"
+  echo "  Configure webhook manually via Jellyfin Dashboard → Plugins → Webhook"
+  echo "  Make sure to include {{Path}} in your template"
+fi
+echo ""
+
+# Step 10: Fix Jellyfin permissions
+echo -e "${BLUE}Step 10: Fixing Jellyfin permissions...${NC}"
+echo "=========================================================================="
+JELLYFIN_DATA_DIR="/var/lib/jellyfin"
+
+if [[ -d "${JELLYFIN_DATA_DIR}" ]]; then
+  echo "Setting correct ownership and permissions for ${JELLYFIN_DATA_DIR}..."
+
+  # Set ownership to jellyfin:jellyfin recursively
+  echo "  → Setting ownership (jellyfin:jellyfin)..."
+  $SUDO chown -R jellyfin:jellyfin "${JELLYFIN_DATA_DIR}" 2>/dev/null || true
+
+  # Fix directory permissions (755 - rwxr-xr-x)
+  echo "  → Setting directory permissions (755)..."
+  $SUDO find "${JELLYFIN_DATA_DIR}" -type d -exec chmod 755 {} \; 2>/dev/null || true
+
+  # Fix file permissions (644 - rw-r--r--)
+  echo "  → Setting file permissions (644)..."
+  $SUDO find "${JELLYFIN_DATA_DIR}" -type f -exec chmod 644 {} \; 2>/dev/null || true
+
+  # Make shell scripts executable (755)
+  echo "  → Setting script permissions (755)..."
+  $SUDO find "${JELLYFIN_DATA_DIR}/plugins" -type f -name "*.sh" -exec chmod 755 {} \; 2>/dev/null || true
+
+  echo -e "${GREEN}✓ Jellyfin permissions fixed${NC}"
+
+  # Verify plugin directories
+  echo ""
+  echo "Verifying plugin directories:"
+  for plugin_dir in "${JELLYFIN_DATA_DIR}/plugins"/*; do
+    if [[ -d "${plugin_dir}" ]]; then
+      plugin_name=$(basename "${plugin_dir}")
+      owner=$($SUDO stat -c '%U:%G' "${plugin_dir}" 2>/dev/null || $SUDO stat -f '%Su:%Sg' "${plugin_dir}" 2>/dev/null || echo "unknown")
+      perms=$($SUDO stat -c '%a' "${plugin_dir}" 2>/dev/null || $SUDO stat -f '%A' "${plugin_dir}" 2>/dev/null || echo "unknown")
+      echo "  ${plugin_name}: ${owner} (${perms})"
+    fi
+  done
+else
+  echo -e "${YELLOW}⚠ Jellyfin data directory not found at ${JELLYFIN_DATA_DIR}${NC}"
+fi
+echo ""
+
+# Step 11: Final Jellyfin restart
+echo -e "${BLUE}Step 11: Restarting Jellyfin service...${NC}"
+echo "=========================================================================="
+
+if systemctl list-unit-files | grep -q jellyfin.service; then
+  echo "Restarting Jellyfin to apply all changes..."
+
+  $SUDO systemctl restart jellyfin
+
+  # Wait for Jellyfin to start
+  echo "Waiting for Jellyfin to start..."
+  sleep 5
+
+  if systemctl is-active --quiet jellyfin; then
+    echo -e "${GREEN}✓ Jellyfin service is running${NC}"
+
+    # Show Jellyfin status
+    jellyfin_status=$($SUDO systemctl status jellyfin --no-pager -l 2>&1 | head -10)
+    echo ""
+    echo "Jellyfin Status:"
+    echo "${jellyfin_status}" | grep -E "(Active:|Main PID:|Memory:|CPU:)" || echo "  Running"
+  else
+    echo -e "${YELLOW}⚠ Jellyfin service may not have started properly${NC}"
+    echo "  Check logs: sudo journalctl -u jellyfin -n 50"
+  fi
+else
+  echo -e "${YELLOW}⚠ Jellyfin service not found${NC}"
+  echo "  If running in Docker, restart manually:"
+  echo "  docker restart jellyfin"
 fi
 echo ""
 
@@ -611,15 +766,14 @@ else
 fi
 echo ""
 echo "Next Steps:"
-echo "  1. Restart Jellyfin to load progress overlay:"
-echo "     sudo systemctl restart jellyfin"
-echo "     Then hard-refresh browser: Ctrl+Shift+R"
+echo "  1. Hard-refresh your browser to load progress overlay:"
+echo "     Ctrl+Shift+R (or Cmd+Shift+R on Mac)"
 echo ""
-echo "  2. Configure Jellyfin webhook:"
+echo "  2. Verify webhook configuration in Jellyfin Dashboard:"
 echo "     See: ${REPO_DIR}/WEBHOOK_CONFIGURATION_CORRECT.md"
 echo ""
-echo "  3. Test the webhook:"
-echo "     python3 ${REPO_DIR}/scripts/test_webhook.py"
+echo "  3. Test the pipeline by playing a video in Jellyfin"
+echo "     (Watchdog will log activity to /var/log/srgan-watchdog.log)"
 echo ""
 echo "  4. Check service status:"
 echo "     ${REPO_DIR}/scripts/manage_watchdog.sh status"
