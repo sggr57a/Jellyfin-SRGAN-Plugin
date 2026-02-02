@@ -1,0 +1,28 @@
+/**
+ * Centered Loading Indicator Variant
+ * More prominent display option
+ */
+
+.upscaling-progress-container.loading-centered {
+    top: 50%;
+    left: 50%;
+    right: auto;
+    transform: translate(-50%, -50%);
+}
+
+.upscaling-progress-container.loading-centered .upscaling-progress-content {
+    min-width: 400px;
+    padding: 24px;
+}
+
+.upscaling-progress-container.loading-centered .upscaling-icon {
+    font-size: 32px;
+}
+
+.upscaling-progress-container.loading-centered .upscaling-title {
+    font-size: 18px;
+}
+
+.upscaling-progress-container.loading-centered .upscaling-progress-bar {
+    height: 32px;
+}

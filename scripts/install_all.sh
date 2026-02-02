@@ -273,8 +273,52 @@ fi
 
 # --- Webhook Plugin Build & Install ---
 echo ""
-echo "Building Patched Webhook Plugin (with Path support)..."
+echo "=========================================================================="
+echo "Setting up Webhook Plugin with {{Path}} Variable Support..."
+echo "=========================================================================="
 WEBHOOK_PLUGIN_SRC="${REPO_DIR}/jellyfin-plugin-webhook"
+WEBHOOK_HELPERS_FILE="${WEBHOOK_PLUGIN_SRC}/Jellyfin.Plugin.Webhook/Helpers/DataObjectHelpers.cs"
+
+# Step 2.1: Setup webhook source if needed
+if [[ ! -f "${WEBHOOK_HELPERS_FILE}" ]]; then
+  echo ""
+  echo "Webhook source code not found. Setting up from official repository..."
+  if [[ -f "${REPO_DIR}/scripts/setup_webhook_source.sh" ]]; then
+    if bash "${REPO_DIR}/scripts/setup_webhook_source.sh"; then
+      echo -e "${GREEN}✓ Webhook source setup complete${NC}"
+    else
+      echo -e "${YELLOW}⚠ Webhook source setup failed${NC}"
+      echo "  Continuing with existing files..."
+    fi
+  else
+    echo -e "${YELLOW}⚠ setup_webhook_source.sh not found${NC}"
+  fi
+fi
+
+# Step 2.2: Apply Path patch if needed
+if [[ -f "${WEBHOOK_HELPERS_FILE}" ]]; then
+  echo ""
+  echo "Checking if {{Path}} patch is applied..."
+  if ! grep -q '"Path".*item\.Path' "${WEBHOOK_HELPERS_FILE}"; then
+    echo "{{Path}} patch not found. Applying patch..."
+    if [[ -f "${REPO_DIR}/scripts/patch_webhook_path.sh" ]]; then
+      if bash "${REPO_DIR}/scripts/patch_webhook_path.sh"; then
+        echo -e "${GREEN}✓ {{Path}} patch applied successfully${NC}"
+      else
+        echo -e "${YELLOW}⚠ Patch application failed${NC}"
+        echo "  Webhook will not include Path variable"
+      fi
+    else
+      echo -e "${YELLOW}⚠ patch_webhook_path.sh not found${NC}"
+    fi
+  else
+    echo -e "${GREEN}✓ {{Path}} patch already applied${NC}"
+  fi
+fi
+
+# Step 2.3: Build webhook plugin
+echo ""
+echo "Building Patched Webhook Plugin..."
 
 if [[ -d "${WEBHOOK_PLUGIN_SRC}" ]]; then
   # Clean and build

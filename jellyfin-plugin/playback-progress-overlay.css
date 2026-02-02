@@ -1,0 +1,246 @@
+/**
+ * Jellyfin Upscaling Progress Overlay Styles
+ * Theme-aware with CSS variables
+ */
+
+.upscaling-progress-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 10000;
+    font-family: var(--font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif);
+    opacity: 0;
+    transform: translateY(-20px);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    pointer-events: none;
+}
+
+.upscaling-progress-container.visible {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: all;
+}
+
+.upscaling-progress-content {
+    background: var(--card-background, rgba(0, 0, 0, 0.9));
+    border: 1px solid var(--card-border-color, rgba(255, 255, 255, 0.1));
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    min-width: 320px;
+    max-width: 400px;
+    overflow: hidden;
+}
+
+.upscaling-progress-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    background: var(--header-background, rgba(255, 255, 255, 0.05));
+    border-bottom: 1px solid var(--card-border-color, rgba(255, 255, 255, 0.1));
+}
+
+.upscaling-icon {
+    font-size: 20px;
+}
+
+.upscaling-title {
+    flex: 1;
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text-primary, #ffffff);
+}
+
+.upscaling-close {
+    background: none;
+    border: none;
+    color: var(--text-secondary, #aaaaaa);
+    font-size: 24px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+    width: 24px;
+    height: 24px;
+    transition: color 0.2s ease;
+}
+
+.upscaling-close:hover {
+    color: var(--text-primary, #ffffff);
+}
+
+.upscaling-progress-body {
+    padding: 16px;
+}
+
+.upscaling-status {
+    font-size: 13px;
+    color: var(--text-secondary, #cccccc);
+    margin-bottom: 12px;
+}
+
+.upscaling-progress-bar {
+    position: relative;
+    height: 24px;
+    background: var(--progress-bg, rgba(255, 255, 255, 0.1));
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 12px;
+}
+
+.upscaling-progress-fill {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    background: linear-gradient(90deg, 
+        var(--accent-color, #00a4dc) 0%,
+        var(--accent-color-light, #52b8e7) 100%);
+    border-radius: 12px;
+    transition: width 0.5s ease;
+}
+
+.status-loading .upscaling-progress-fill {
+    background: repeating-linear-gradient(
+        90deg,
+        rgba(255, 255, 255, 0.1),
+        rgba(255, 255, 255, 0.1) 10px,
+        rgba(255, 255, 255, 0.2) 10px,
+        rgba(255, 255, 255, 0.2) 20px
+    );
+    animation: loading-sweep 1.5s linear infinite;
+}
+
+@keyframes loading-sweep {
+    0% { background-position: 0 0; }
+    100% { background-position: 40px 0; }
+}
+
+.status-processing .upscaling-progress-fill::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(90deg,
+        transparent,
+        rgba(255, 255, 255, 0.3),
+        transparent
+    );
+    animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+.status-complete .upscaling-progress-fill {
+    background: linear-gradient(90deg,
+        var(--success-color, #4caf50) 0%,
+        var(--success-color-light, #66bb6a) 100%);
+}
+
+.upscaling-progress-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary, #ffffff);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+    z-index: 1;
+}
+
+.upscaling-details {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 12px;
+    margin-bottom: 12px;
+}
+
+.upscaling-speed,
+.upscaling-eta {
+    color: var(--text-secondary, #aaaaaa);
+}
+
+.upscaling-speed.good {
+    color: var(--success-color, #4caf50);
+}
+
+.upscaling-speed.slow {
+    color: var(--warning-color, #ff9800);
+}
+
+.upscaling-switch-btn {
+    width: 100%;
+    padding: 10px;
+    background: var(--accent-color, #00a4dc);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.upscaling-switch-btn:hover {
+    background: var(--accent-color-dark, #0082b3);
+}
+
+.upscaling-switch-btn:active {
+    transform: scale(0.98);
+}
+
+/* Dark theme support */
+@media (prefers-color-scheme: dark) {
+    .upscaling-progress-content {
+        background: rgba(20, 20, 20, 0.95);
+        border-color: rgba(255, 255, 255, 0.1);
+    }
+}
+
+/* Light theme support */
+@media (prefers-color-scheme: light) {
+    .upscaling-progress-content {
+        background: rgba(255, 255, 255, 0.95);
+        border-color: rgba(0, 0, 0, 0.1);
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    }
+    
+    .upscaling-title,
+    .upscaling-progress-text {
+        color: #000000;
+    }
+    
+    .upscaling-status,
+    .upscaling-speed,
+    .upscaling-eta {
+        color: #666666;
+    }
+    
+    .upscaling-close {
+        color: #999999;
+    }
+    
+    .upscaling-close:hover {
+        color: #000000;
+    }
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+    .upscaling-progress-container {
+        top: 10px;
+        right: 10px;
+        left: 10px;
+    }
+    
+    .upscaling-progress-content {
+        min-width: auto;
+        max-width: none;
+    }
+}
