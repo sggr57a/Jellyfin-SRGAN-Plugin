@@ -48,27 +48,54 @@ fi
 
 # Add Path property after the ItemId check
 # This is the critical patch
+
+# Try multiple patterns to find insertion point
+LINE_NUM=""
+
+# Try pattern 1: Look for dataObject["ItemId"]
+LINE_NUM=$(grep -n 'dataObject\["ItemId"\]' "${HELPERS_FILE}" | tail -1 | cut -d: -f1)
+
+# Try pattern 2: Look for any ItemId assignment
+if [ -z "$LINE_NUM" ]; then
+    LINE_NUM=$(grep -n '"ItemId".*=' "${HELPERS_FILE}" | tail -1 | cut -d: -f1)
+fi
+
+# Try pattern 3: Look for AddBaseItemData method
+if [ -z "$LINE_NUM" ]; then
+    # Find the AddBaseItemData method and insert near the end
+    START_LINE=$(grep -n "AddBaseItemData" "${HELPERS_FILE}" | head -1 | cut -d: -f1)
+    if [ -n "$START_LINE" ]; then
+        # Find closing brace of method (rough estimate)
+        LINE_NUM=$((START_LINE + 20))
+    fi
+fi
+
+if [ -z "$LINE_NUM" ] || [ "$LINE_NUM" -eq 0 ]; then
+    echo "Error: Could not find insertion point in DataObjectHelpers.cs"
+    echo "Trying to insert after first dataObject assignment..."
+    LINE_NUM=$(grep -n 'dataObject\[' "${HELPERS_FILE}" | head -1 | cut -d: -f1)
+    
+    if [ -z "$LINE_NUM" ]; then
+        echo "Error: Could not find any dataObject assignments"
+        mv "${HELPERS_FILE}.backup" "${HELPERS_FILE}"
+        exit 1
+    fi
+fi
+
+echo "  Inserting at line ${LINE_NUM}"
+
+# Create the patch code
 cat > /tmp/path_patch.txt << 'EOF'
+
         if (!string.IsNullOrEmpty(item.Path))
         {
             dataObject["Path"] = item.Path;
         }
 EOF
 
-# Find the right place to insert (after ItemId typically)
-# We'll insert after the line containing "ItemId"
-LINE_NUM=$(grep -n '"ItemId"' "${HELPERS_FILE}" | tail -1 | cut -d: -f1)
-
-if [ -z "$LINE_NUM" ]; then
-    echo "Error: Could not find ItemId property in DataObjectHelpers.cs"
-    mv "${HELPERS_FILE}.backup" "${HELPERS_FILE}"
-    exit 1
-fi
-
-# Insert the Path property after ItemId
+# Insert the Path property after found line
 {
     head -n "$LINE_NUM" "${HELPERS_FILE}"
-    echo ""
     cat /tmp/path_patch.txt
     tail -n +$((LINE_NUM + 1)) "${HELPERS_FILE}"
 } > "${HELPERS_FILE}.new"

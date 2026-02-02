@@ -316,8 +316,16 @@ if [[ -f "${WEBHOOK_HELPERS_FILE}" ]]; then
     if [[ -f "${REPO_DIR}/scripts/patch_webhook_path.sh" ]]; then
       if bash "${REPO_DIR}/scripts/patch_webhook_path.sh"; then
         echo -e "${GREEN}✓ {{Path}} patch applied successfully${NC}"
+        
+        # Verify patch
+        if grep -q '"Path".*item\.Path' "${WEBHOOK_HELPERS_FILE}"; then
+          echo "  Verified: Path property found in source"
+        else
+          echo -e "${RED}✗ Patch verification failed!${NC}"
+          echo "  Check ${WEBHOOK_HELPERS_FILE}"
+        fi
       else
-        echo -e "${YELLOW}⚠ Patch application failed${NC}"
+        echo -e "${RED}✗ Patch application failed${NC}"
         echo "  Webhook will not include Path variable"
       fi
     else
@@ -325,6 +333,8 @@ if [[ -f "${WEBHOOK_HELPERS_FILE}" ]]; then
     fi
   else
     echo -e "${GREEN}✓ {{Path}} patch already applied${NC}"
+    echo "  Current implementation:"
+    grep -A 3 -B 1 '"Path".*item\.Path' "${WEBHOOK_HELPERS_FILE}" | head -5 | sed 's/^/  /'
   fi
 fi
 
@@ -659,11 +669,49 @@ echo "  Troubleshoot:    ${REPO_DIR}/TROUBLESHOOTING.md"
 echo ""
 echo "Quick health check:"
 if curl -s http://localhost:5000/health > /dev/null 2>&1; then
-  echo -e "  Webhook: ${GREEN}responding${NC} ✓"
+  echo -e "  Watchdog: ${GREEN}responding${NC} ✓"
 else
-  echo -e "  Webhook: ${YELLOW}not responding yet${NC} (may need a few seconds)"
+  echo -e "  Watchdog: ${YELLOW}not responding yet${NC} (may need a few seconds)"
 fi
 echo ""
 
+# Final {{Path}} verification
+echo "=========================================================================="
+echo "{{Path}} Variable Verification"
+echo "=========================================================================="
+WEBHOOK_HELPERS="${REPO_DIR}/jellyfin-plugin-webhook/Jellyfin.Plugin.Webhook/Helpers/DataObjectHelpers.cs"
+if [[ -f "${WEBHOOK_HELPERS}" ]]; then
+  if grep -q '"Path".*item\.Path' "${WEBHOOK_HELPERS}"; then
+    echo -e "${GREEN}✓ {{Path}} patch verified in source code${NC}"
+  else
+    echo -e "${YELLOW}⚠ {{Path}} patch NOT found in source code${NC}"
+    echo "  This means Path variable will be empty in webhooks!"
+    echo "  Run: sudo ./scripts/fix_webhook_path_complete.sh"
+  fi
+else
+  echo -e "${YELLOW}⚠ Webhook source not available${NC}"
+fi
+
+WEBHOOK_CONFIG="/var/lib/jellyfin/plugins/configurations/Jellyfin.Plugin.Webhook.xml"
+if [[ -f "${WEBHOOK_CONFIG}" ]]; then
+  if grep -q "{{Path}}" "${WEBHOOK_CONFIG}"; then
+    echo -e "${GREEN}✓ {{Path}} found in webhook configuration${NC}"
+  else
+    echo -e "${YELLOW}⚠ {{Path}} NOT in webhook configuration${NC}"
+    echo "  Run: sudo python3 ${REPO_DIR}/scripts/configure_webhook.py http://localhost:5000"
+  fi
+fi
+
+WEBHOOK_DLL_DIR=$(find /var/lib/jellyfin/plugins -maxdepth 1 -type d -name "Webhook_*" 2>/dev/null | head -1)
+if [[ -n "${WEBHOOK_DLL_DIR}" ]] && [[ -f "${WEBHOOK_DLL_DIR}/Jellyfin.Plugin.Webhook.dll" ]]; then
+  DLL_AGE=$(($(date +%s) - $(stat -c %Y "${WEBHOOK_DLL_DIR}/Jellyfin.Plugin.Webhook.dll" 2>/dev/null || stat -f %m "${WEBHOOK_DLL_DIR}/Jellyfin.Plugin.Webhook.dll" 2>/dev/null || echo 0)))
+  if [[ $DLL_AGE -lt 600 ]]; then
+    echo -e "${GREEN}✓ Webhook DLL recently updated ($DLL_AGE seconds ago)${NC}"
+  else
+    echo -e "${YELLOW}⚠ Webhook DLL is old ($DLL_AGE seconds ago)${NC}"
+    echo "  The patched version may not be installed"
+  fi
+fi
+echo ""
 
 exit 0
