@@ -10,6 +10,9 @@ NC='\033[0m' # No Color
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+# Initialize variables that may not be set
+WEBHOOK_PLUGIN_DIR=""
+
 echo "=========================================================================="
 echo "Real-Time HDR SRGAN Pipeline - Automated Installation"
 echo "=========================================================================="
@@ -537,7 +540,7 @@ echo "  ✓ Watchdog systemd service (auto-starts on boot)"
 if [[ -n "${JELLYFIN_LIB_DIR}" ]]; then
   echo "  ✓ Jellyfin plugin"
 fi
-if [[ -d "${WEBHOOK_PLUGIN_SRC}" ]] && [[ -f "${WEBHOOK_PLUGIN_DIR}/Jellyfin.Plugin.Webhook.dll" ]]; then
+if [[ -d "${WEBHOOK_PLUGIN_SRC}" ]] && [[ -n "${WEBHOOK_PLUGIN_DIR}" ]] && [[ -f "${WEBHOOK_PLUGIN_DIR}/Jellyfin.Plugin.Webhook.dll" ]]; then
   echo "  ✓ Patched webhook plugin (with {{Path}} variable)"
 fi
 if [[ -d "${JELLYFIN_WEB_DIR}" ]] && [[ -f "${JELLYFIN_WEB_DIR}/playback-progress-overlay.css" ]]; then
