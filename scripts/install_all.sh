@@ -286,13 +286,25 @@ if [[ ! -f "${WEBHOOK_HELPERS_FILE}" ]]; then
   if [[ -f "${REPO_DIR}/scripts/setup_webhook_source.sh" ]]; then
     if bash "${REPO_DIR}/scripts/setup_webhook_source.sh"; then
       echo -e "${GREEN}✓ Webhook source setup complete${NC}"
+      
+      # Verify critical files were created
+      if [[ -f "${WEBHOOK_HELPERS_FILE}" ]]; then
+        echo "  ✓ DataObjectHelpers.cs found"
+      else
+        echo -e "${RED}✗ DataObjectHelpers.cs still missing after setup${NC}"
+        echo "  Check setup_webhook_source.sh output above"
+      fi
     else
-      echo -e "${YELLOW}⚠ Webhook source setup failed${NC}"
-      echo "  Continuing with existing files..."
+      echo -e "${RED}✗ Webhook source setup failed${NC}"
+      echo "  Cannot build webhook without source code"
+      echo "  See errors above"
     fi
   else
-    echo -e "${YELLOW}⚠ setup_webhook_source.sh not found${NC}"
+    echo -e "${RED}✗ setup_webhook_source.sh not found at: ${REPO_DIR}/scripts/setup_webhook_source.sh${NC}"
   fi
+else
+  echo ""
+  echo "✓ Webhook source code already present"
 fi
 
 # Step 2.2: Apply Path patch if needed
@@ -320,10 +332,23 @@ fi
 echo ""
 echo "Building Patched Webhook Plugin..."
 
-if [[ -d "${WEBHOOK_PLUGIN_SRC}" ]]; then
-  # Clean and build
-  dotnet clean "${WEBHOOK_PLUGIN_SRC}/Jellyfin.Plugin.Webhook.sln" >/dev/null 2>&1 || true
-  if dotnet build "${WEBHOOK_PLUGIN_SRC}/Jellyfin.Plugin.Webhook.sln" -c Release; then
+if [[ -d "${WEBHOOK_PLUGIN_SRC}/Jellyfin.Plugin.Webhook" ]]; then
+  # Use .csproj directly (no .sln file in our setup)
+  WEBHOOK_CSPROJ="${WEBHOOK_PLUGIN_SRC}/Jellyfin.Plugin.Webhook/Jellyfin.Plugin.Webhook.csproj"
+  
+  if [[ ! -f "${WEBHOOK_CSPROJ}" ]]; then
+    echo -e "${RED}✗ Webhook project file not found: ${WEBHOOK_CSPROJ}${NC}"
+    echo "  Run setup_webhook_source.sh first"
+  else
+    # Clean previous build
+    echo "Cleaning previous webhook build..."
+    cd "${WEBHOOK_PLUGIN_SRC}/Jellyfin.Plugin.Webhook"
+    rm -rf bin obj 2>/dev/null || true
+    dotnet nuget locals all --clear >/dev/null 2>&1 || true
+    
+    # Build
+    echo "Building webhook plugin from: ${WEBHOOK_CSPROJ}"
+    if dotnet build "${WEBHOOK_CSPROJ}" -c Release; then
     echo -e "${GREEN}✓ Webhook plugin built successfully${NC}"
     
     # Find build output directory
@@ -366,11 +391,14 @@ if [[ -d "${WEBHOOK_PLUGIN_SRC}" ]]; then
     fi
   else
     echo -e "${YELLOW}⚠ Webhook plugin build failed${NC}"
-    echo "  You can build manually: cd ${WEBHOOK_PLUGIN_SRC} && dotnet build -c Release"
+    echo "  Check build output above for errors"
+    echo "  You can build manually: cd ${WEBHOOK_PLUGIN_SRC}/Jellyfin.Plugin.Webhook && dotnet build -c Release"
+  fi
   fi
 else
-  echo -e "${YELLOW}⚠ Webhook plugin source not found at: ${WEBHOOK_PLUGIN_SRC}${NC}"
+  echo -e "${YELLOW}⚠ Webhook plugin source not found at: ${WEBHOOK_PLUGIN_SRC}/Jellyfin.Plugin.Webhook${NC}"
   echo "  The patched webhook plugin is required for {{Path}} variable support"
+  echo "  Run: ./scripts/setup_webhook_source.sh"
 fi
 
 # Restart Jellyfin if plugins were installed
