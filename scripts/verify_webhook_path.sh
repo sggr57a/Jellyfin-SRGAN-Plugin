@@ -9,13 +9,29 @@ echo "==========================================================================
 echo ""
 
 # Check if webhook plugin is installed
-WEBHOOK_DLL="/var/lib/jellyfin/plugins/Webhook/Jellyfin.Plugin.Webhook.dll"
-if [ ! -f "${WEBHOOK_DLL}" ]; then
-    echo "✗ Webhook plugin not installed at ${WEBHOOK_DLL}"
+WEBHOOK_DIR=$(find /var/lib/jellyfin/plugins -maxdepth 1 -type d -name "Webhook_*" 2>/dev/null | head -1)
+
+if [ -z "${WEBHOOK_DIR}" ]; then
+    echo "✗ Webhook plugin not installed (no Webhook_* directory found)"
+    echo ""
+    echo "The webhook plugin must be installed from Jellyfin catalog first:"
+    echo "  1. Jellyfin Dashboard → Plugins → Catalog"
+    echo "  2. Search for 'Webhook' and install"
+    echo "  3. Restart Jellyfin"
+    echo "  4. Then run: sudo ./scripts/install_all.sh"
+    echo ""
+    echo "For detailed diagnosis, run: ./scripts/diagnose_webhook.sh"
     exit 1
 fi
 
-echo "✓ Webhook plugin installed"
+WEBHOOK_DLL="${WEBHOOK_DIR}/Jellyfin.Plugin.Webhook.dll"
+if [ ! -f "${WEBHOOK_DLL}" ]; then
+    echo "✗ Webhook DLL not found at ${WEBHOOK_DLL}"
+    exit 1
+fi
+
+echo "✓ Webhook plugin installed at: ${WEBHOOK_DIR}"
+echo "  DLL: $(du -h ${WEBHOOK_DLL} | cut -f1)"
 echo ""
 
 # Check webhook configuration
