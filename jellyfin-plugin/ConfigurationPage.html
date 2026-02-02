@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Real-Time HDR SRGAN Pipeline Configuration</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background-color: #1a1a1a; color: #e0e0e0; }
+        h1 { color: #00a4dc; border-bottom: 2px solid #00a4dc; padding-bottom: 10px; }
+        .section { background-color: #2a2a2a; padding: 20px; margin: 20px 0; border-radius: 8px; }
+        button { background-color: #00a4dc; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin: 5px; }
+        button:hover { background-color: #0088b3; }
+        .status { padding: 10px; border-radius: 4px; margin: 10px 0; }
+        .status.success { background-color: #28a745; color: white; }
+        .status.error { background-color: #dc3545; color: white; }
+    </style>
+</head>
+<body>
+    <h1>Real-Time HDR SRGAN Pipeline Configuration</h1>
+
+    <div class="section">
+        <h2>GPU Detection</h2>
+        <button id="detectGpuBtn" onclick="detectGPU()">Detect NVIDIA GPU</button>
+        <div id="gpuStatus"></div>
+    </div>
+
+    <div class="section">
+        <h2>Plugin Settings</h2>
+        <div>
+            <label><input type="checkbox" id="enableUpscaling" onchange="saveConfig()"> Enable HDR Upscaling</label>
+        </div>
+        <div>
+            <label><input type="checkbox" id="enableTranscoding" onchange="saveConfig()"> Enable Transcoding Integration</label>
+        </div>
+        <div>
+            <label>GPU Device: <select id="gpuDevice" onchange="saveConfig()"><option value="0">Auto-detect</option></select></label>
+        </div>
+        <div>
+            <label>Upscale Factor: <select id="upscaleFactor" onchange="saveConfig()"><option value="2">2x</option><option value="4">4x</option></select></label>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Backup & Restore</h2>
+        <button onclick="createBackup()">Create Configuration Backup</button>
+        <div id="backupStatus"></div>
+    </div>
+
+    <script type="text/javascript">
+    document.addEventListener('DOMContentLoaded', function() {
+        loadConfig();
+    });
+
+    function loadConfig() {
+        fetch('/Plugins/RealTimeHDRSRGAN/Configuration')
+            .then(r => r.json())
+            .then(config => {
+                document.getElementById('enableUpscaling').checked = config.enableUpscaling || false;
+                document.getElementById('enableTranscoding').checked = config.enableTranscoding || false;
+                document.getElementById('gpuDevice').value = config.gpuDevice || '0';
+                document.getElementById('upscaleFactor').value = config.upscaleFactor || '2';
+            })
+            .catch(err => console.error('Error loading config:', err));
+    }
+
+    function saveConfig() {
+        const config = {
+            enableUpscaling: document.getElementById('enableUpscaling').checked,
+            enableTranscoding: document.getElementById('enableTranscoding').checked,
+            gpuDevice: document.getElementById('gpuDevice').value,
+            upscaleFactor: document.getElementById('upscaleFactor').value
+        };
+        fetch('/Plugins/RealTimeHDRSRGAN/Configuration', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(config)
+        }).catch(err => console.error('Error saving:', err));
+    }
+
+    function detectGPU() {
+        const statusDiv = document.getElementById('gpuStatus');
+        statusDiv.innerHTML = '<div class="status">Detecting GPU...</div>';
+        fetch('/Plugins/RealTimeHDRSRGAN/DetectGPU', {method: 'POST'})
+            .then(r => r.json())
+            .then(data => {
+                if (data.available) {
+                    statusDiv.innerHTML = '<div class="status success">✓ NVIDIA GPU detected!</div>';
+                } else {
+                    statusDiv.innerHTML = '<div class="status error">✗ No NVIDIA GPU detected</div>';
+                }
+            })
+            .catch(err => {
+                statusDiv.innerHTML = '<div class="status error">Error: ' + err.message + '</div>';
+            });
+    }
+
+    function createBackup() {
+        const statusDiv = document.getElementById('backupStatus');
+        statusDiv.innerHTML = '<div class="status">Creating backup...</div>';
+        fetch('/Plugins/RealTimeHDRSRGAN/CreateBackup', {method: 'POST'})
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    statusDiv.innerHTML = '<div class="status success">✓ Backup created: ' + data.backupPath + '</div>';
+                } else {
+                    statusDiv.innerHTML = '<div class="status error">✗ Backup failed: ' + data.error + '</div>';
+                }
+            })
+            .catch(err => {
+                statusDiv.innerHTML = '<div class="status error">Error: ' + err.message + '</div>';
+            });
+    }
+    </script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "category": "Transcoding",
+  "changelog": "Initial release with NVIDIA GPU support and automatic backup/restore",
+  "description": "Real-Time HDR SRGAN Pipeline plugin for Jellyfin with NVIDIA GPU upscaling support",
+  "guid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "name": "Real-Time HDR SRGAN Pipeline",
+  "overview": "Adds real-time HDR upscaling capabilities to Jellyfin transcoding using NVIDIA GPUs",
+  "owner": "Real-Time HDR SRGAN Pipeline",
+  "status": "Active",
+  "targetAbi": "10.11.5.0",
+  "timestamp": "2026-01-27T00:00:00.0000000Z",
+  "version": "1.0.0.0",
+  "autoUpdate": false
+}
