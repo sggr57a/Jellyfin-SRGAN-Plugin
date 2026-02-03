@@ -35,6 +35,8 @@ RUN apt-get update && apt-get install -y \
     libxrender-dev \
     inotify-tools \
     libgomp1 \
+    docker-buildx \
+    nvidia-driver-580 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install .NET 9 SDK and ASP.NET Core runtime for Jellyfin plugin build/runtime
