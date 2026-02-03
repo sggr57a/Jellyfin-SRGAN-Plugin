@@ -221,62 +221,86 @@ echo "Updating docker-compose.yml with volume mounts..."
 # Backup current docker-compose.yml
 cp "${REPO_DIR}/docker-compose.yml" "${REPO_DIR}/docker-compose.yml.backup.$(date +%Y%m%d_%H%M%S)"
 
-# Create temporary file with new volumes
-cat > /tmp/volumes_section.txt << 'VOLEOF'
-    volumes:
-      # Queue file (shared with watchdog)
-      - ./cache:/app/cache
-      
-      # AI models
-      - ./models:/app/models:ro
-      
-      # Output directory (HLS streams + final files)
-      - ./upscaled:/data/upscaled
-      
-      # Media input paths (auto-detected)
-VOLEOF
+# Create new docker-compose.yml with updated volumes
+# Use awk to insert detected paths after the volumes section
+{
+    # Read original file
+    cat "${REPO_DIR}/docker-compose.yml"
+} | awk -v paths="${FOUND_PATHS[*]}" '
+BEGIN {
+    # Split paths into array
+    split(paths, path_array, " ")
+    in_volumes = 0
+    in_srgan = 0
+    volumes_printed = 0
+}
 
-# Add detected media paths
-for path in "${FOUND_PATHS[@]}"; do
-    echo "      - ${path}:${path}:ro" >> /tmp/volumes_section.txt
-done
+# Track when we are in srgan-upscaler service
+/^  srgan-upscaler:/ {
+    in_srgan = 1
+}
 
-# Replace volumes section in docker-compose.yml
-# This finds the srgan-upscaler service and replaces its volumes section
-python3 << 'PYEOF'
-import sys
-import re
+# Track when we are in another service (exit srgan-upscaler)
+/^  [a-z]/ && !/^  srgan-upscaler:/ {
+    in_srgan = 0
+    in_volumes = 0
+}
 
-compose_file = sys.argv[1]
-volumes_file = sys.argv[2]
+# When we hit volumes in srgan-upscaler service
+/^    volumes:/ && in_srgan {
+    in_volumes = 1
+    print "    volumes:"
+    print "      # Queue file (shared with watchdog)"
+    print "      - ./cache:/app/cache"
+    print "      "
+    print "      # AI models"
+    print "      - ./models:/app/models:ro"
+    print "      "
+    print "      # Output directory (HLS streams + final files)"
+    print "      - ./upscaled:/data/upscaled"
+    
+    # Add detected media paths
+    if (length(path_array) > 0) {
+        print "      "
+        print "      # Media input paths (auto-detected)"
+        for (i in path_array) {
+            if (path_array[i] != "") {
+                print "      - " path_array[i] ":" path_array[i] ":ro"
+            }
+        }
+    }
+    
+    volumes_printed = 1
+    next
+}
 
-# Read the new volumes section
-with open(volumes_file, 'r') as f:
-    new_volumes = f.read()
+# Skip old volume entries
+in_volumes && /^      -/ {
+    next
+}
 
-# Read docker-compose.yml
-with open(compose_file, 'r') as f:
-    content = f.read()
+# Exit volumes section when we hit next key
+in_volumes && /^    [a-z]/ {
+    in_volumes = 0
+}
 
-# Pattern: Find srgan-upscaler service volumes section
-# Replace from "    volumes:" until the next same-level key (4 spaces indent)
-pattern = r'(  srgan-upscaler:.*?)(    volumes:.*?)(\n    [a-z_-]+:|\n  [a-z_-]+:|\nnetworks:)'
-replacement = r'\1' + new_volumes + r'\3'
+# Print everything else
+!in_volumes || !(/^      -/) {
+    print
+}
+' > "${REPO_DIR}/docker-compose.yml.new"
 
-# Replace the volumes section
-content = re.sub(pattern, replacement, content, flags=re.DOTALL)
-
-# Write back
-with open(compose_file, 'w') as f:
-    f.write(content)
-
-print("✓ docker-compose.yml updated with detected paths")
-PYEOF "${REPO_DIR}/docker-compose.yml" /tmp/volumes_section.txt
-
-# Clean up
-rm -f /tmp/volumes_section.txt
+# Replace old with new
+mv "${REPO_DIR}/docker-compose.yml.new" "${REPO_DIR}/docker-compose.yml"
 
 echo -e "${GREEN}✓ Volume mounts configured${NC}"
+echo ""
+
+# Show what was added
+echo "Added volume mounts:"
+for path in "${FOUND_PATHS[@]}"; do
+    echo "  - ${path}"
+done
 echo ""
 
 #==============================================================================
