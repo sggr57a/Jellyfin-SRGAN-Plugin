@@ -25,12 +25,14 @@ services:
       - PYTHONUNBUFFERED=1
       
       # SRGAN Configuration
-      - SRGAN_ENABLE=0
+      - SRGAN_ENABLE=1
       - SRGAN_MODEL_PATH=/app/models/swift_srgan_4x.pth
       - SRGAN_DEVICE=cuda
       - SRGAN_FP16=1
       - SRGAN_WAIT_SECONDS=-1
       - SRGAN_SCALE_FACTOR=2.0
+      - SRGAN_DENOISE=1
+      - SRGAN_DENOISE_STRENGTH=0.5
       
       # Queue Configuration
       - SRGAN_QUEUE_FILE=/app/cache/queue.jsonl

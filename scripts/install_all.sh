@@ -567,6 +567,56 @@ echo -e "${GREEN}✓ Directories created${NC}"
 echo ""
 
 #==============================================================================
+# Download SRGAN Model
+#==============================================================================
+
+echo -e "${BLUE}Downloading SRGAN AI Model...${NC}"
+echo "=========================================================================="
+
+MODEL_FILE="${REPO_DIR}/models/swift_srgan_4x.pth"
+MODEL_URL="https://github.com/Koushik0901/Swift-SRGAN/releases/download/v0.1/swift_srgan_4x.pth.tar"
+
+if [[ -f "$MODEL_FILE" ]]; then
+    MODEL_SIZE=$(du -h "$MODEL_FILE" | cut -f1)
+    echo -e "${GREEN}✓ Model already exists${NC} (${MODEL_SIZE})"
+else
+    echo "Downloading Swift-SRGAN 4x model (~16MB)..."
+    echo "This may take a moment..."
+    echo ""
+    
+    if command -v wget >/dev/null 2>&1; then
+        wget -q --show-progress -O "${REPO_DIR}/models/swift_srgan_4x.pth.tar" "${MODEL_URL}"
+        DOWNLOAD_SUCCESS=$?
+    elif command -v curl >/dev/null 2>&1; then
+        curl -L --progress-bar -o "${REPO_DIR}/models/swift_srgan_4x.pth.tar" "${MODEL_URL}"
+        DOWNLOAD_SUCCESS=$?
+    else
+        echo -e "${RED}✗ Neither wget nor curl found${NC}"
+        echo "Please install wget or curl to download the model"
+        exit 1
+    fi
+    
+    if [[ $DOWNLOAD_SUCCESS -eq 0 ]] && [[ -f "${REPO_DIR}/models/swift_srgan_4x.pth.tar" ]]; then
+        # Rename .tar to .pth (it's already a .pth file, just named .tar)
+        mv "${REPO_DIR}/models/swift_srgan_4x.pth.tar" "${REPO_DIR}/models/swift_srgan_4x.pth"
+        MODEL_SIZE=$(du -h "$MODEL_FILE" | cut -f1)
+        echo -e "${GREEN}✓ Model downloaded successfully${NC} (${MODEL_SIZE})"
+    else
+        echo -e "${RED}✗ Model download failed${NC}"
+        echo "You can manually download later with:"
+        echo "  ./scripts/setup_model.sh"
+        echo ""
+        echo "Installation will continue, but AI upscaling won't work until model is downloaded."
+        read -p "Continue without model? (y/N): " CONTINUE_WITHOUT_MODEL
+        if [[ ! "${CONTINUE_WITHOUT_MODEL}" =~ ^[Yy] ]]; then
+            exit 1
+        fi
+    fi
+fi
+
+echo ""
+
+#==============================================================================
 # Step 9: Configure Jellyfin Webhook
 #==============================================================================
 

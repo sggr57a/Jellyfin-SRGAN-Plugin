@@ -1,5 +1,6 @@
 import os
 import queue
+import sys
 import threading
 from typing import Optional, Tuple
 
@@ -173,6 +174,45 @@ class _WriterThread:
         self.thread.join()
 
 
+def _denoise_tensor(tensor: torch.Tensor, strength: float = 0.5) -> torch.Tensor:
+    """
+    Apply temporal denoising using bilateral filter-like approach.
+    Args:
+        tensor: Input tensor (B, C, H, W) in range [0, 1]
+        strength: Denoising strength (0.0-1.0), higher = more denoising
+    """
+    if strength <= 0:
+        return tensor
+    
+    # Use a simple gaussian blur for denoising
+    # For better quality, could use non-local means or bilateral filter
+    kernel_size = max(3, int(strength * 7) | 1)  # Ensure odd number
+    sigma = strength * 2.0
+    
+    # Create gaussian kernel
+    from torch.nn.functional import conv2d
+    kernel_1d = torch.exp(-torch.arange(-(kernel_size//2), kernel_size//2 + 1, dtype=torch.float32) ** 2 / (2 * sigma ** 2))
+    kernel_1d = kernel_1d / kernel_1d.sum()
+    kernel_2d = kernel_1d.view(-1, 1) * kernel_1d.view(1, -1)
+    kernel_2d = kernel_2d.view(1, 1, kernel_size, kernel_size).to(tensor.device)
+    
+    # Apply to each channel
+    denoised = []
+    for c in range(tensor.shape[1]):
+        channel = tensor[:, c:c+1, :, :]
+        # Add padding
+        pad = kernel_size // 2
+        channel_padded = torch.nn.functional.pad(channel, (pad, pad, pad, pad), mode='reflect')
+        denoised_channel = conv2d(channel_padded, kernel_2d, padding=0)
+        denoised.append(denoised_channel)
+    
+    denoised_tensor = torch.cat(denoised, dim=1)
+    
+    # Blend original and denoised based on strength
+    alpha = min(1.0, strength)
+    return tensor * (1 - alpha) + denoised_tensor * alpha
+
+
 def upscale(input_path: str, output_path: str, width=None, height=None, scale=2.0):
     torch.backends.cudnn.benchmark = True
     device = os.environ.get("SRGAN_DEVICE") or (
@@ -186,6 +226,19 @@ def upscale(input_path: str, output_path: str, width=None, height=None, scale=2.
     use_fp16 = device.startswith("cuda") and os.environ.get("SRGAN_FP16", "1") == "1"
     if use_fp16:
         model = model.half()
+    
+    # Denoising configuration
+    enable_denoise = os.environ.get("SRGAN_DENOISE", "0") == "1"
+    denoise_strength = float(os.environ.get("SRGAN_DENOISE_STRENGTH", "0.5"))
+    
+    print(f"AI Upscaling Configuration:", file=sys.stderr)
+    print(f"  Model: {model_path}", file=sys.stderr)
+    print(f"  Device: {device}", file=sys.stderr)
+    print(f"  FP16: {use_fp16}", file=sys.stderr)
+    print(f"  Scale: {scale_factor}x", file=sys.stderr)
+    print(f"  Denoising: {'Enabled' if enable_denoise else 'Disabled'}", file=sys.stderr)
+    if enable_denoise:
+        print(f"  Denoise Strength: {denoise_strength}", file=sys.stderr)
 
     reader = torchaudio.io.StreamReader(input_path)
     video_stream_idx, video_info = _select_video_stream(reader)
@@ -255,6 +308,10 @@ def upscale(input_path: str, output_path: str, width=None, height=None, scale=2.
                 video_chunk = video_chunk.float() / scale_value
             else:
                 video_chunk = video_chunk.float()
+            
+            # Apply denoising before upscaling if enabled
+            if enable_denoise:
+                video_chunk = _denoise_tensor(video_chunk, denoise_strength)
 
             with torch.no_grad():
                 if use_fp16:
