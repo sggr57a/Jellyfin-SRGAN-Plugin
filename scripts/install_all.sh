@@ -221,8 +221,9 @@ echo "Updating docker-compose.yml with volume mounts..."
 # Backup current docker-compose.yml
 cp "${REPO_DIR}/docker-compose.yml" "${REPO_DIR}/docker-compose.yml.backup.$(date +%Y%m%d_%H%M%S)"
 
-# Build the volumes section with detected paths
-VOLUMES_SECTION="    volumes:
+# Create temporary file with new volumes
+cat > /tmp/volumes_section.txt << 'VOLEOF'
+    volumes:
       # Queue file (shared with watchdog)
       - ./cache:/app/cache
       
@@ -232,34 +233,48 @@ VOLUMES_SECTION="    volumes:
       # Output directory (HLS streams + final files)
       - ./upscaled:/data/upscaled
       
-      # Media input paths (auto-detected)"
+      # Media input paths (auto-detected)
+VOLEOF
 
+# Add detected media paths
 for path in "${FOUND_PATHS[@]}"; do
-    VOLUMES_SECTION="${VOLUMES_SECTION}
-      - ${path}:${path}:ro"
+    echo "      - ${path}:${path}:ro" >> /tmp/volumes_section.txt
 done
 
-# Update docker-compose.yml using sed (more reliable than yaml module)
-# Find the volumes section and replace it
-sed -i.bak "/^    volumes:/,/^    [a-z]/ {
-    /^    volumes:/!{/^    [a-z]/!d}
-}" "${REPO_DIR}/docker-compose.yml"
+# Replace volumes section in docker-compose.yml
+# This finds the srgan-upscaler service and replaces its volumes section
+python3 << 'PYEOF'
+import sys
+import re
 
-# Insert new volumes section after "volumes:" line in srgan-upscaler service
-awk -v volumes="$VOLUMES_SECTION" '
-    /^  srgan-upscaler:/ { in_service=1 }
-    /^  [a-z]/ && !/^  srgan-upscaler:/ { in_service=0 }
-    /^    volumes:/ && in_service {
-        print volumes
-        # Skip old volume lines until next section
-        while (getline && /^      -/) {}
-        if ($0 !~ /^      -/) print
-        next
-    }
-    { print }
-' "${REPO_DIR}/docker-compose.yml" > "${REPO_DIR}/docker-compose.yml.tmp"
+compose_file = sys.argv[1]
+volumes_file = sys.argv[2]
 
-mv "${REPO_DIR}/docker-compose.yml.tmp" "${REPO_DIR}/docker-compose.yml"
+# Read the new volumes section
+with open(volumes_file, 'r') as f:
+    new_volumes = f.read()
+
+# Read docker-compose.yml
+with open(compose_file, 'r') as f:
+    content = f.read()
+
+# Pattern: Find srgan-upscaler service volumes section
+# Replace from "    volumes:" until the next same-level key (4 spaces indent)
+pattern = r'(  srgan-upscaler:.*?)(    volumes:.*?)(\n    [a-z_-]+:|\n  [a-z_-]+:|\nnetworks:)'
+replacement = r'\1' + new_volumes + r'\3'
+
+# Replace the volumes section
+content = re.sub(pattern, replacement, content, flags=re.DOTALL)
+
+# Write back
+with open(compose_file, 'w') as f:
+    f.write(content)
+
+print("✓ docker-compose.yml updated with detected paths")
+PYEOF "${REPO_DIR}/docker-compose.yml" /tmp/volumes_section.txt
+
+# Clean up
+rm -f /tmp/volumes_section.txt
 
 echo -e "${GREEN}✓ Volume mounts configured${NC}"
 echo ""
