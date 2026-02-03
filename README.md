@@ -21,34 +21,38 @@ A high-performance video upscaling pipeline for Jellyfin with NVIDIA GPU support
 
 ---
 
-## Quick Setup (5 Minutes)
+## Quick Setup (One Command)
 
-### 1. Create Jellyfin API Key
-```
-Jellyfin Dashboard → Advanced → API Keys → +
-Name: SRGAN Watchdog
-Copy the generated key
-```
-
-### 2. Install
 ```bash
 git clone <your-repo-url>
 cd Jellyfin-SRGAN-Pipeline
 
-# Run installer (will prompt for API key)
-sudo ./scripts/install_api_watchdog.sh
+# Run the automated installer
+sudo ./scripts/install_all.sh
 ```
 
-### 3. Configure Webhook
-```
-Jellyfin Dashboard → Plugins → Webhook
-Add Generic Destination:
-  - URL: http://localhost:5432/upscale-trigger
+**The installer automatically:**
+- ✅ Installs all dependencies (Docker, Python, etc.)
+- ✅ Detects and configures media library paths
+- ✅ Builds Docker container
+- ✅ Prompts for Jellyfin API key
+- ✅ Installs API-based watchdog service
+- ✅ Cleans up old template-based files
+- ✅ Starts all services
+- ✅ Tests the installation
+
+**Manual step (during installation):**
+- Create Jellyfin API key when prompted:
+  - Dashboard → Advanced → API Keys → +
+  - Name: SRGAN Watchdog
+  - Copy the key
+- Configure webhook when prompted:
+  - Dashboard → Plugins → Webhook → Add Generic Destination
+  - URL: `http://localhost:5432/upscale-trigger`
   - Notification Type: ✓ Playback Start
   - Item Type: ✓ Movie, ✓ Episode
-```
 
-### 4. Test
+**Then test:**
 ```bash
 # Monitor logs
 sudo journalctl -u srgan-watchdog-api -f

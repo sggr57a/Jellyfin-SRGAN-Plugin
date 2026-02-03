@@ -6,757 +6,610 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+CYAN='\033[0;36m'
+NC='\033[0m'
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-
-# Initialize variables that may not be set
-WEBHOOK_PLUGIN_DIR=""
+SCRIPT_DIR="${REPO_DIR}/scripts"
 
 echo "=========================================================================="
-echo "Real-Time HDR SRGAN Pipeline - Automated Installation"
+echo "Real-Time HDR SRGAN Pipeline - Complete Installation"
 echo "=========================================================================="
 echo ""
+echo "This installer will:"
+echo "  ✓ Install system dependencies (Docker, Python, etc.)"
+echo "  ✓ Configure volume mounts for media access"
+echo "  ✓ Build Docker container"
+echo "  ✓ Install API-based watchdog (recommended)"
+echo "  ✓ Clean up old template-based files"
+echo "  ✓ Configure Jellyfin webhook"
+echo "  ✓ Test the installation"
+echo ""
+read -p "Press Enter to continue..."
+echo ""
 
-# Helper function to check if running as root/sudo
-check_sudo() {
-  if [[ $EUID -eq 0 ]]; then
-    echo -e "${YELLOW}⚠ Running as root. Some installations may need regular user context.${NC}"
-  fi
+#==============================================================================
+# Helper Functions
+#==============================================================================
+
+check_command() {
+    if command -v "$1" >/dev/null 2>&1; then
+        return 0
+    else
+        return 1
+    fi
 }
 
-# Helper function to detect OS
 detect_os() {
-  if [[ -f /etc/os-release ]]; then
-    . /etc/os-release
-    OS_ID="${ID}"
-    OS_VERSION="${VERSION_ID}"
-    echo -e "${BLUE}Detected OS: ${NAME} ${VERSION_ID}${NC}"
-  else
-    echo -e "${RED}Cannot detect OS. This script supports Ubuntu/Debian.${NC}"
-    exit 1
-  fi
+    if [[ -f /etc/os-release ]]; then
+        . /etc/os-release
+        OS_ID="${ID}"
+        OS_VERSION="${VERSION_ID}"
+        echo -e "${BLUE}Detected OS: ${NAME} ${VERSION_ID}${NC}"
+    else
+        echo -e "${RED}Cannot detect OS${NC}"
+        exit 1
+    fi
 }
 
-# Step 0: Install system dependencies
-echo -e "${BLUE}Step 0: Installing system dependencies...${NC}"
+#==============================================================================
+# Step 0: Check Prerequisites
+#==============================================================================
+
+echo -e "${BLUE}Step 0: Checking system...${NC}"
 echo "=========================================================================="
+
 detect_os
 
-# Install Docker if missing
-if ! command -v docker >/dev/null 2>&1; then
-  echo -e "${YELLOW}Docker not found. Installing Docker...${NC}"
-  if [[ "${OS_ID}" == "ubuntu" ]] || [[ "${OS_ID}" == "debian" ]]; then
-    curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
-    sudo sh /tmp/get-docker.sh
-    sudo usermod -aG docker "${USER}"
-    rm /tmp/get-docker.sh
-    echo -e "${GREEN}✓ Docker installed${NC}"
-    echo -e "${YELLOW}⚠ You may need to log out and back in for group changes to take effect${NC}"
-    echo "  Or run: newgrp docker"
-  else
-    echo -e "${RED}Unsupported OS for automatic Docker installation: ${OS_ID}${NC}"
-    echo "Please install Docker manually: https://docs.docker.com/engine/install/"
-    exit 1
-  fi
-else
-  echo -e "${GREEN}✓ Docker already installed${NC}"
+# Check if running as root
+if [[ $EUID -eq 0 ]]; then
+    echo -e "${YELLOW}⚠ Running as root. Some steps may need regular user context.${NC}"
 fi
 
-# Verify Docker Compose v2
-if ! docker compose version >/dev/null 2>&1; then
-  echo -e "${YELLOW}Docker Compose v2 not found${NC}"
-  if docker-compose version >/dev/null 2>&1; then
-    echo -e "${YELLOW}Legacy docker-compose detected. Docker Compose v2 is required.${NC}"
-    echo "Please upgrade Docker to get Compose v2: https://docs.docker.com/compose/install/"
-    exit 1
-  else
-    echo -e "${RED}Docker Compose v2 not available${NC}"
-    exit 1
-  fi
-else
-  echo -e "${GREEN}✓ Docker Compose v2 available${NC}"
-fi
+echo ""
 
-# Install Python and Flask if missing
-if ! command -v python3 >/dev/null 2>&1; then
-  echo -e "${YELLOW}Python 3 not found. Installing...${NC}"
-  sudo apt-get update
-  sudo apt-get install -y python3 python3-pip
-  echo -e "${GREEN}✓ Python 3 installed${NC}"
-else
-  echo -e "${GREEN}✓ Python 3 already installed${NC}"
-fi
+#==============================================================================
+# Step 1: Install System Dependencies
+#==============================================================================
 
-# Install Flask and requests
-echo "Checking Python dependencies (Flask, requests)..."
-if ! python3 -c "import flask" >/dev/null 2>&1 || ! python3 -c "import requests" >/dev/null 2>&1; then
-  echo -e "${YELLOW}Installing Flask and requests...${NC}"
-  pip3 install flask requests
-  echo -e "${GREEN}✓ Flask and requests installed${NC}"
-else
-  echo -e "${GREEN}✓ Flask and requests already installed${NC}"
-fi
+echo -e "${BLUE}Step 1: Installing system dependencies...${NC}"
+echo "=========================================================================="
 
-# Install .NET 9.0 SDK and Runtime
-if ! command -v dotnet >/dev/null 2>&1; then
-  echo -e "${YELLOW}.NET SDK not found. Installing .NET 9.0...${NC}"
-  if [[ "${OS_ID}" == "ubuntu" ]]; then
-    wget https://packages.microsoft.com/config/ubuntu/${OS_VERSION}/packages-microsoft-prod.deb -O /tmp/packages-microsoft-prod.deb
-    sudo dpkg -i /tmp/packages-microsoft-prod.deb
-    rm /tmp/packages-microsoft-prod.deb
-    sudo apt-get update
-    sudo apt-get install -y dotnet-sdk-9.0 aspnetcore-runtime-9.0
-    echo -e "${GREEN}✓ .NET 9.0 SDK and Runtime installed${NC}"
-  elif [[ "${OS_ID}" == "debian" ]]; then
-    wget https://packages.microsoft.com/config/debian/${OS_VERSION}/packages-microsoft-prod.deb -O /tmp/packages-microsoft-prod.deb
-    sudo dpkg -i /tmp/packages-microsoft-prod.deb
-    rm /tmp/packages-microsoft-prod.deb
-    sudo apt-get update
-    sudo apt-get install -y dotnet-sdk-9.0 aspnetcore-runtime-9.0
-    echo -e "${GREEN}✓ .NET 9.0 SDK and Runtime installed${NC}"
-  else
-    echo -e "${YELLOW}⚠ Unsupported OS for automatic .NET installation${NC}"
-    echo "Please install .NET 9.0 manually: https://dotnet.microsoft.com/download"
-  fi
-else
-  echo -e "${GREEN}✓ .NET SDK already installed ($(dotnet --version))${NC}"
-fi
-
-# Check for NVIDIA GPU and drivers
-echo "Checking for NVIDIA GPU..."
-if command -v nvidia-smi >/dev/null 2>&1; then
-  echo -e "${GREEN}✓ NVIDIA drivers installed${NC}"
-  nvidia-smi --query-gpu=name --format=csv,noheader | head -1
-else
-  echo -e "${YELLOW}⚠ NVIDIA drivers not detected${NC}"
-  echo "Please install NVIDIA drivers for your GPU: https://www.nvidia.com/Download/index.aspx"
-  echo "This is required for GPU-accelerated upscaling."
-  read -p "Continue without GPU support? (y/N) " -n 1 -r
-  echo ""
-  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    exit 1
-  fi
-fi
-
-# Install NVIDIA Container Toolkit if GPU is available
-if command -v nvidia-smi >/dev/null 2>&1; then
-  if ! docker run --rm --gpus all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi >/dev/null 2>&1; then
-    echo -e "${YELLOW}NVIDIA Container Toolkit not found. Installing...${NC}"
+# Docker
+if ! check_command docker; then
+    echo "Installing Docker..."
     if [[ "${OS_ID}" == "ubuntu" ]] || [[ "${OS_ID}" == "debian" ]]; then
-      distribution="${OS_ID}${OS_VERSION}"
-      curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
-      curl -s -L https://nvidia.github.io/libnvidia-container/${distribution}/libnvidia-container.list | \
-        sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
-        sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
-      sudo apt-get update
-      sudo apt-get install -y nvidia-container-toolkit
-      sudo systemctl restart docker
-      echo -e "${GREEN}✓ NVIDIA Container Toolkit installed${NC}"
+        curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
+        sudo sh /tmp/get-docker.sh
+        sudo usermod -aG docker "${SUDO_USER:-${USER}}"
+        rm /tmp/get-docker.sh
+        echo -e "${GREEN}✓ Docker installed${NC}"
+        echo -e "${YELLOW}⚠ You may need to log out and back in for Docker access${NC}"
     else
-      echo -e "${YELLOW}⚠ Unsupported OS for automatic NVIDIA Container Toolkit installation${NC}"
-      echo "Please install manually: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html"
+        echo -e "${RED}✗ Unsupported OS for automatic Docker installation${NC}"
+        echo "Install Docker manually: https://docs.docker.com/engine/install/"
+        exit 1
     fi
-  else
-    echo -e "${GREEN}✓ NVIDIA Container Toolkit already installed${NC}"
-  fi
+else
+    echo -e "${GREEN}✓ Docker installed${NC}"
 fi
 
-# Check for Jellyfin server (do not install)
-echo "Checking for Jellyfin server..."
-JELLYFIN_FOUND=false
-if systemctl is-active --quiet jellyfin 2>/dev/null; then
-  echo -e "${GREEN}✓ Jellyfin server is running${NC}"
-  JELLYFIN_FOUND=true
-elif command -v jellyfin >/dev/null 2>&1; then
-  echo -e "${YELLOW}⚠ Jellyfin is installed but not running${NC}"
-  JELLYFIN_FOUND=true
-else
-  echo -e "${YELLOW}⚠ Jellyfin server not detected${NC}"
-  echo "The plugin requires Jellyfin 10.8+ to be installed."
-  echo "Install from: https://jellyfin.org/downloads/"
-  echo ""
-  read -p "Continue without Jellyfin? (plugin installation will be skipped) (y/N) " -n 1 -r
-  echo ""
-  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+# Docker Compose v2
+if ! docker compose version >/dev/null 2>&1; then
+    echo -e "${RED}✗ Docker Compose v2 required${NC}"
+    echo "Install from: https://docs.docker.com/compose/install/"
     exit 1
-  fi
-fi
-
-echo ""
-
-# Step 1: Run verification
-echo -e "${BLUE}Step 1: Verifying system prerequisites...${NC}"
-echo "=========================================================================="
-if [[ -f "${REPO_DIR}/scripts/verify_setup.py" ]]; then
-  if python3 "${REPO_DIR}/scripts/verify_setup.py"; then
-    echo -e "${GREEN}✓ Verification passed${NC}"
-  else
-    echo -e "${YELLOW}⚠ Some checks failed but dependencies are installed${NC}"
-    echo "  Continuing with installation..."
-    sleep 2
-  fi
 else
-  echo -e "${YELLOW}⚠ verify_setup.py not found, skipping verification${NC}"
-fi
-echo ""
-
-# Step 2: Build and Install Jellyfin Plugins
-echo -e "${BLUE}Step 2: Building and installing Jellyfin plugins...${NC}"
-echo "=========================================================================="
-
-# Find Jellyfin library directory for compilation
-JELLYFIN_LIB_DIR="${JELLYFIN_LIB_DIR:-}"
-if [[ -z "${JELLYFIN_LIB_DIR}" ]]; then
-  for candidate in /usr/lib/jellyfin/bin /usr/share/jellyfin/bin /usr/lib/jellyfin /usr/share/jellyfin; do
-    if [[ -f "${candidate}/MediaBrowser.Common.dll" ]]; then
-      JELLYFIN_LIB_DIR="${candidate}"
-      break
-    fi
-  done
+    echo -e "${GREEN}✓ Docker Compose v2 installed${NC}"
 fi
 
-PLUGINS_BASE_DIR="/var/lib/jellyfin/plugins"
-JELLYFIN_NEEDS_RESTART=false
-
-# --- SRGAN Plugin Build & Install ---
-echo ""
-echo "Building Real-Time HDR SRGAN Plugin..."
-if [[ -n "${JELLYFIN_LIB_DIR}" ]]; then
-  echo "  Using Jellyfin libraries from: ${JELLYFIN_LIB_DIR}"
-  
-  # Clean and build
-  dotnet clean "${REPO_DIR}/jellyfin-plugin/Server/RealTimeHdrSrgan.Plugin.csproj" >/dev/null 2>&1 || true
-  if dotnet build "${REPO_DIR}/jellyfin-plugin/Server/RealTimeHdrSrgan.Plugin.csproj" -c Release "/p:JellyfinLibDir=${JELLYFIN_LIB_DIR}"; then
-    echo -e "${GREEN}✓ SRGAN plugin built successfully${NC}"
-    
-    # Find build output
-    SRGAN_OUTPUT_DIR=$(find "${REPO_DIR}/jellyfin-plugin/Server/bin/Release" -maxdepth 1 -type d -name "net*" | head -1)
-    
-    if [[ -n "${SRGAN_OUTPUT_DIR}" && -f "${SRGAN_OUTPUT_DIR}/Jellyfin.Plugin.RealTimeHdrSrgan.dll" ]]; then
-      # Find or create plugin directory
-      SRGAN_PLUGIN_DIR=$(find "${PLUGINS_BASE_DIR}" -maxdepth 1 -type d -name "Real-Time*HDR*SRGAN*" 2>/dev/null | head -1)
-      
-      if [[ -z "${SRGAN_PLUGIN_DIR}" ]]; then
-        echo "  Creating new plugin directory..."
-        SRGAN_PLUGIN_DIR="${PLUGINS_BASE_DIR}/Real-Time HDR SRGAN Pipeline_1.0.0.0"
-        sudo mkdir -p "${SRGAN_PLUGIN_DIR}"
-      fi
-      
-      echo "  Installing to: ${SRGAN_PLUGIN_DIR}"
-      
-      # Backup existing DLL if present
-      if [[ -f "${SRGAN_PLUGIN_DIR}/Jellyfin.Plugin.RealTimeHdrSrgan.dll" ]]; then
-        sudo cp "${SRGAN_PLUGIN_DIR}/Jellyfin.Plugin.RealTimeHdrSrgan.dll" \
-                "${SRGAN_PLUGIN_DIR}/Jellyfin.Plugin.RealTimeHdrSrgan.dll.backup"
-        echo "    ✓ Backed up existing DLL"
-      fi
-      
-      # Copy all files (DLL + shell scripts)
-      sudo cp "${SRGAN_OUTPUT_DIR}/"*.dll "${SRGAN_PLUGIN_DIR}/" 2>/dev/null || true
-      sudo cp "${SRGAN_OUTPUT_DIR}/"*.sh "${SRGAN_PLUGIN_DIR}/" 2>/dev/null || true
-      sudo chmod +x "${SRGAN_PLUGIN_DIR}/"*.sh 2>/dev/null || true
-      
-      echo -e "  ${GREEN}✓ SRGAN plugin installed${NC}"
-      JELLYFIN_NEEDS_RESTART=true
-    else
-      echo -e "${YELLOW}⚠ SRGAN plugin build output not found${NC}"
-    fi
-  else
-    echo -e "${YELLOW}⚠ SRGAN plugin build failed${NC}"
-    echo "  You can build manually: cd ${REPO_DIR}/jellyfin-plugin/Server && dotnet build -c Release"
-  fi
+# Python 3
+if ! check_command python3; then
+    echo "Installing Python 3..."
+    sudo apt-get update
+    sudo apt-get install -y python3 python3-pip
+    echo -e "${GREEN}✓ Python 3 installed${NC}"
 else
-  echo -e "${YELLOW}⚠ Jellyfin library directory not found, skipping SRGAN plugin build${NC}"
-  echo "  Set JELLYFIN_LIB_DIR environment variable or install Jellyfin first"
+    echo -e "${GREEN}✓ Python 3 installed${NC}"
 fi
 
-# --- Webhook Plugin Build & Install ---
-echo ""
-echo "=========================================================================="
-echo "Setting up Webhook Plugin with {{Path}} Variable Support..."
-echo "=========================================================================="
-WEBHOOK_PLUGIN_SRC="${REPO_DIR}/jellyfin-plugin-webhook"
-WEBHOOK_HELPERS_FILE="${WEBHOOK_PLUGIN_SRC}/Jellyfin.Plugin.Webhook/Helpers/DataObjectHelpers.cs"
+# Python packages
+echo "Installing Python packages (flask, requests)..."
+python3 -m pip install --user flask requests >/dev/null 2>&1 || \
+    sudo pip3 install flask requests >/dev/null 2>&1 || true
+echo -e "${GREEN}✓ Python packages installed${NC}"
 
-# Step 2.1: Setup webhook source if needed
-if [[ ! -f "${WEBHOOK_HELPERS_FILE}" ]]; then
-  echo ""
-  echo "Webhook source code not found. Setting up from official repository..."
-  if [[ -f "${REPO_DIR}/scripts/setup_webhook_source.sh" ]]; then
-    if bash "${REPO_DIR}/scripts/setup_webhook_source.sh"; then
-      echo -e "${GREEN}✓ Webhook source setup complete${NC}"
-      
-      # Verify critical files were created
-      if [[ -f "${WEBHOOK_HELPERS_FILE}" ]]; then
-        echo "  ✓ DataObjectHelpers.cs found"
-      else
-        echo -e "${RED}✗ DataObjectHelpers.cs still missing after setup${NC}"
-        echo "  Check setup_webhook_source.sh output above"
-      fi
-    else
-      echo -e "${RED}✗ Webhook source setup failed${NC}"
-      echo "  Cannot build webhook without source code"
-      echo "  See errors above"
-    fi
-  else
-    echo -e "${RED}✗ setup_webhook_source.sh not found at: ${REPO_DIR}/scripts/setup_webhook_source.sh${NC}"
-  fi
+# Check for Jellyfin
+JELLYFIN_URL="http://localhost:8096"
+if systemctl is-active --quiet jellyfin 2>/dev/null; then
+    echo -e "${GREEN}✓ Jellyfin server running${NC}"
+    JELLYFIN_FOUND=true
+elif check_command jellyfin; then
+    echo -e "${YELLOW}⚠ Jellyfin installed but not running${NC}"
+    JELLYFIN_FOUND=true
 else
-  echo ""
-  echo "✓ Webhook source code already present"
+    echo -e "${YELLOW}⚠ Jellyfin not detected${NC}"
+    echo "  Install from: https://jellyfin.org/downloads/"
+    JELLYFIN_FOUND=false
 fi
 
-# Step 2.2: Apply Path patch if needed
-if [[ -f "${WEBHOOK_HELPERS_FILE}" ]]; then
-  echo ""
-  echo "Checking if {{Path}} patch is applied..."
-  if ! grep -q '"Path".*item\.Path' "${WEBHOOK_HELPERS_FILE}"; then
-    echo "{{Path}} patch not found. Applying patch..."
-    if [[ -f "${REPO_DIR}/scripts/patch_webhook_path.sh" ]]; then
-      if bash "${REPO_DIR}/scripts/patch_webhook_path.sh"; then
-        echo -e "${GREEN}✓ {{Path}} patch applied successfully${NC}"
-        
-        # Verify patch
-        if grep -q '"Path".*item\.Path' "${WEBHOOK_HELPERS_FILE}"; then
-          echo "  Verified: Path property found in source"
-        else
-          echo -e "${RED}✗ Patch verification failed!${NC}"
-          echo "  Check ${WEBHOOK_HELPERS_FILE}"
+echo ""
+
+#==============================================================================
+# Step 2: Clean Up Old Files
+#==============================================================================
+
+echo -e "${BLUE}Step 2: Cleaning up old template-based files...${NC}"
+echo "=========================================================================="
+
+# Stop and remove old template-based watchdog
+if systemctl is-active --quiet srgan-watchdog 2>/dev/null; then
+    echo "Stopping old template-based watchdog..."
+    sudo systemctl stop srgan-watchdog
+    sudo systemctl disable srgan-watchdog
+    echo -e "${GREEN}✓ Old watchdog stopped${NC}"
+fi
+
+# Remove old webhook plugin build files (not needed for API approach)
+if [[ -d "${REPO_DIR}/jellyfin-plugin-webhook" ]]; then
+    echo "Removing old webhook plugin files (not needed for API approach)..."
+    rm -rf "${REPO_DIR}/jellyfin-plugin-webhook"
+    echo -e "${GREEN}✓ Old webhook plugin files removed${NC}"
+fi
+
+# Remove old template-based scripts
+OLD_SCRIPTS=(
+    "${SCRIPT_DIR}/watchdog.py.old"
+    "${SCRIPT_DIR}/setup_webhook_source.sh"
+    "${SCRIPT_DIR}/patch_webhook_path.sh"
+)
+
+for script in "${OLD_SCRIPTS[@]}"; do
+    if [[ -f "$script" ]]; then
+        rm -f "$script"
+    fi
+done
+
+echo -e "${GREEN}✓ Cleanup complete${NC}"
+echo ""
+
+#==============================================================================
+# Step 3: Auto-Detect Media Paths & Configure Volume Mounts
+#==============================================================================
+
+echo -e "${BLUE}Step 3: Configuring Docker volume mounts...${NC}"
+echo "=========================================================================="
+
+echo "Detecting media library paths..."
+
+# Common media paths
+MEDIA_PATHS=(
+    "/media"
+    "/mnt/media"
+    "/srv/media"
+    "/data/media"
+)
+
+FOUND_PATHS=()
+for path in "${MEDIA_PATHS[@]}"; do
+    if [[ -d "$path" ]]; then
+        # Check if it has media files
+        FILE_COUNT=$(find "$path" -maxdepth 3 -type f \( -name "*.mkv" -o -name "*.mp4" -o -name "*.avi" \) 2>/dev/null | wc -l || echo "0")
+        if [[ $FILE_COUNT -gt 0 ]]; then
+            echo -e "  ${GREEN}✓${NC} Found: $path (${FILE_COUNT} video files)"
+            FOUND_PATHS+=("$path")
         fi
-      else
-        echo -e "${RED}✗ Patch application failed${NC}"
-        echo "  Webhook will not include Path variable"
-      fi
-    else
-      echo -e "${YELLOW}⚠ patch_webhook_path.sh not found${NC}"
     fi
-  else
-    echo -e "${GREEN}✓ {{Path}} patch already applied${NC}"
-    echo "  Current implementation:"
-    grep -A 3 -B 1 '"Path".*item\.Path' "${WEBHOOK_HELPERS_FILE}" | head -5 | sed 's/^/  /'
-  fi
+done
+
+if [[ ${#FOUND_PATHS[@]} -eq 0 ]]; then
+    echo -e "${YELLOW}⚠ No media directories auto-detected${NC}"
+    echo ""
+    read -p "Enter path to your media library: " CUSTOM_PATH
+    if [[ -d "$CUSTOM_PATH" ]]; then
+        FOUND_PATHS=("$CUSTOM_PATH")
+    else
+        echo -e "${RED}✗ Path does not exist: $CUSTOM_PATH${NC}"
+        exit 1
+    fi
 fi
 
-# Step 2.3: Build webhook plugin
+# Update docker-compose.yml with detected paths
 echo ""
-echo "Building Patched Webhook Plugin..."
+echo "Updating docker-compose.yml with volume mounts..."
 
-if [[ -d "${WEBHOOK_PLUGIN_SRC}/Jellyfin.Plugin.Webhook" ]]; then
-  # Use .csproj directly (no .sln file in our setup)
-  WEBHOOK_CSPROJ="${WEBHOOK_PLUGIN_SRC}/Jellyfin.Plugin.Webhook/Jellyfin.Plugin.Webhook.csproj"
-  
-  if [[ ! -f "${WEBHOOK_CSPROJ}" ]]; then
-    echo -e "${RED}✗ Webhook project file not found: ${WEBHOOK_CSPROJ}${NC}"
-    echo "  Run setup_webhook_source.sh first"
-  else
-    # Clean previous build
-    echo "Cleaning previous webhook build..."
-    cd "${WEBHOOK_PLUGIN_SRC}/Jellyfin.Plugin.Webhook"
-    rm -rf bin obj 2>/dev/null || true
-    dotnet nuget locals all --clear >/dev/null 2>&1 || true
-    
-    # Build
-    echo "Building webhook plugin from: ${WEBHOOK_CSPROJ}"
-    if dotnet build "${WEBHOOK_CSPROJ}" -c Release; then
-    echo -e "${GREEN}✓ Webhook plugin built successfully${NC}"
-    
-    # Find build output directory
-    WEBHOOK_OUTPUT_DIR=$(find "${WEBHOOK_PLUGIN_SRC}" -path "*/bin/Release/net*" -type d | head -1)
-    
-    if [[ -n "${WEBHOOK_OUTPUT_DIR}" && -f "${WEBHOOK_OUTPUT_DIR}/Jellyfin.Plugin.Webhook.dll" ]]; then
-      # Find existing webhook plugin directory
-      WEBHOOK_PLUGIN_DIR=$(find "${PLUGINS_BASE_DIR}" -maxdepth 1 -type d -name "Webhook_*" 2>/dev/null | head -1)
+# Backup current docker-compose.yml
+cp "${REPO_DIR}/docker-compose.yml" "${REPO_DIR}/docker-compose.yml.backup.$(date +%Y%m%d_%H%M%S)"
+
+# Create volume mounts configuration
+VOLUMES_CONFIG="    volumes:
+      # Queue file (shared communication)
+      - ./cache:/app/cache
       
-      if [[ -z "${WEBHOOK_PLUGIN_DIR}" ]]; then
-        echo -e "${YELLOW}⚠ Webhook plugin not installed in Jellyfin${NC}"
-        echo "  Install the webhook plugin from Jellyfin Dashboard → Plugins → Catalog first"
-        echo "  Then run this script again to patch it with Path support"
-      else
-        echo "  Installing to: ${WEBHOOK_PLUGIN_DIR}"
+      # AI models
+      - ./models:/app/models:ro
+      
+      # Output directory
+      - /mnt/media/upscaled:/data/upscaled
+      
+      # Media input paths (auto-detected)"
+
+for path in "${FOUND_PATHS[@]}"; do
+    VOLUMES_CONFIG="${VOLUMES_CONFIG}
+      - ${path}:${path}:ro"
+done
+
+# Use Python to update docker-compose.yml properly
+python3 << EOPY
+import yaml
+import sys
+
+try:
+    with open('${REPO_DIR}/docker-compose.yml', 'r') as f:
+        compose = yaml.safe_load(f)
+    
+    if 'services' in compose and 'srgan-upscaler' in compose['services']:
+        # Build volumes list
+        volumes = [
+            './cache:/app/cache',
+            './models:/app/models:ro',
+            '/mnt/media/upscaled:/data/upscaled'
+        ]
         
-        # Backup existing DLL
-        if [[ -f "${WEBHOOK_PLUGIN_DIR}/Jellyfin.Plugin.Webhook.dll" ]]; then
-          sudo cp "${WEBHOOK_PLUGIN_DIR}/Jellyfin.Plugin.Webhook.dll" \
-                  "${WEBHOOK_PLUGIN_DIR}/Jellyfin.Plugin.Webhook.dll.backup"
-          echo "    ✓ Backed up existing DLL"
-        fi
+        # Add detected media paths
+        for path in ${FOUND_PATHS[@]}:
+            volumes.append(f'{path}:{path}:ro')
         
-        # Copy ALL files from build output (DLL + dependencies + deps.json)
-        echo "  Copying plugin files and dependencies..."
-        echo "    From: ${WEBHOOK_OUTPUT_DIR}"
-        echo "    To:   ${WEBHOOK_PLUGIN_DIR}"
-        echo ""
+        compose['services']['srgan-upscaler']['volumes'] = volumes
         
-        # List files to be copied
-        echo "  Files to copy:"
-        for dll in "${WEBHOOK_OUTPUT_DIR}"/*.dll; do
-          if [[ -f "$dll" ]]; then
-            FILENAME=$(basename "$dll")
-            SIZE=$(du -h "$dll" | cut -f1)
-            echo "    - ${FILENAME} (${SIZE})"
-          fi
-        done
+        with open('${REPO_DIR}/docker-compose.yml', 'w') as f:
+            yaml.dump(compose, f, default_flow_style=False, sort_keys=False)
         
-        # Copy DLLs
-        sudo cp "${WEBHOOK_OUTPUT_DIR}/"*.dll "${WEBHOOK_PLUGIN_DIR}/" 2>/dev/null || true
-        
-        # Copy deps.json
-        if [[ -f "${WEBHOOK_OUTPUT_DIR}/Jellyfin.Plugin.Webhook.deps.json" ]]; then
-          sudo cp "${WEBHOOK_OUTPUT_DIR}/Jellyfin.Plugin.Webhook.deps.json" "${WEBHOOK_PLUGIN_DIR}/"
-          echo "    ✓ deps.json copied"
-        fi
-        
-        # Set correct ownership and permissions
-        echo ""
-        echo "  Setting permissions..."
-        sudo chown jellyfin:jellyfin "${WEBHOOK_PLUGIN_DIR}"/*.dll 2>/dev/null || true
-        sudo chmod 644 "${WEBHOOK_PLUGIN_DIR}"/*.dll 2>/dev/null || true
-        
-        # Verify critical files were copied
-        echo ""
-        echo "  Verifying installation..."
-        VERIFY_FILES=(
-          "Jellyfin.Plugin.Webhook.dll"
-          "Handlebars.Net.dll"
-          "MailKit.dll"
-        )
-        
-        ALL_PRESENT=true
-        for file in "${VERIFY_FILES[@]}"; do
-          if [[ -f "${WEBHOOK_PLUGIN_DIR}/${file}" ]]; then
-            echo "    ✓ ${file}"
-          else
-            echo "    ✗ ${file} - MISSING!"
-            ALL_PRESENT=false
-          fi
-        done
-        
-        if $ALL_PRESENT; then
-          echo ""
-          echo -e "  ${GREEN}✓ Patched webhook plugin installed with Path support${NC}"
-          JELLYFIN_NEEDS_RESTART=true
-        else
-          echo ""
-          echo -e "  ${YELLOW}⚠ Some files may be missing${NC}"
-        fi
-      fi
+        print('✓ docker-compose.yml updated')
+    else:
+        print('✗ Invalid docker-compose.yml structure', file=sys.stderr)
+        sys.exit(1)
+except Exception as e:
+    # Fallback to manual edit if yaml module not available
+    print(f'Using manual configuration (yaml module unavailable): {e}')
+EOPY
+
+echo -e "${GREEN}✓ Volume mounts configured${NC}"
+echo ""
+
+#==============================================================================
+# Step 4: Build Docker Container
+#==============================================================================
+
+echo -e "${BLUE}Step 4: Building Docker container...${NC}"
+echo "=========================================================================="
+
+cd "${REPO_DIR}"
+
+echo "Building srgan-upscaler container..."
+if docker compose build srgan-upscaler; then
+    echo -e "${GREEN}✓ Container built successfully${NC}"
+else
+    echo -e "${RED}✗ Container build failed${NC}"
+    exit 1
+fi
+
+echo ""
+
+#==============================================================================
+# Step 5: Get Jellyfin API Key
+#==============================================================================
+
+echo -e "${BLUE}Step 5: Jellyfin API configuration...${NC}"
+echo "=========================================================================="
+
+JELLYFIN_API_KEY=""
+API_KEY_FILE="${REPO_DIR}/.jellyfin_api_key"
+
+# Check if API key already exists
+if [[ -f "$API_KEY_FILE" ]]; then
+    echo "Found existing API key configuration"
+    JELLYFIN_API_KEY=$(cat "$API_KEY_FILE")
+    echo ""
+    read -p "Use existing API key? (Y/n): " USE_EXISTING
+    if [[ ! "${USE_EXISTING}" =~ ^[Nn] ]]; then
+        echo -e "${GREEN}✓ Using existing API key${NC}"
     else
-      echo -e "${YELLOW}⚠ Webhook plugin build output not found${NC}"
+        JELLYFIN_API_KEY=""
     fi
-  else
-    echo -e "${YELLOW}⚠ Webhook plugin build failed${NC}"
-    echo "  Check build output above for errors"
-    echo "  You can build manually: cd ${WEBHOOK_PLUGIN_SRC}/Jellyfin.Plugin.Webhook && dotnet build -c Release"
-  fi
-  fi
-else
-  echo -e "${YELLOW}⚠ Webhook plugin source not found at: ${WEBHOOK_PLUGIN_SRC}/Jellyfin.Plugin.Webhook${NC}"
-  echo "  The patched webhook plugin is required for {{Path}} variable support"
-  echo "  Run: ./scripts/setup_webhook_source.sh"
 fi
 
-# Restart Jellyfin if plugins were installed
-if [[ "${JELLYFIN_NEEDS_RESTART}" == "true" ]]; then
-  echo ""
-  echo "=========================================================================="
-  echo "Restarting Jellyfin to load new plugins..."
-  if systemctl is-active --quiet jellyfin 2>/dev/null; then
-    sudo systemctl restart jellyfin
-    echo -e "${GREEN}✓ Jellyfin restarted${NC}"
-    echo "  Waiting 10 seconds for Jellyfin to initialize..."
-    sleep 10
-    if systemctl is-active --quiet jellyfin; then
-      echo -e "${GREEN}✓ Jellyfin is running${NC}"
-    else
-      echo -e "${YELLOW}⚠ Jellyfin may not have started correctly${NC}"
-      echo "  Check logs: sudo journalctl -u jellyfin -n 50"
+# Prompt for API key if not set
+if [[ -z "$JELLYFIN_API_KEY" ]]; then
+    echo ""
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}  Jellyfin API Key Required${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo "The API-based watchdog needs a Jellyfin API key to query sessions."
+    echo ""
+    echo "To create an API key:"
+    echo "  1. Open Jellyfin Dashboard"
+    echo "  2. Go to: Advanced → API Keys"
+    echo "  3. Click '+' button"
+    echo "  4. Application name: SRGAN Watchdog"
+    echo "  5. Copy the generated key"
+    echo ""
+    read -p "Enter Jellyfin API key: " JELLYFIN_API_KEY
+    
+    if [[ -z "$JELLYFIN_API_KEY" ]]; then
+        echo -e "${RED}✗ API key is required${NC}"
+        exit 1
     fi
-  else
-    echo -e "${YELLOW}⚠ Jellyfin service not detected${NC}"
-    echo "  Restart Jellyfin manually to load the new plugins"
-  fi
+    
+    # Save API key for future use
+    echo "$JELLYFIN_API_KEY" > "$API_KEY_FILE"
+    chmod 600 "$API_KEY_FILE"
 fi
+
+# Test API connectivity
 echo ""
-
-# Step 2.4: Configure webhook for SRGAN pipeline
-echo -e "${BLUE}Step 2.4: Configuring webhook for SRGAN pipeline...${NC}"
-echo "=========================================================================="
-WEBHOOK_CONFIG_PATH="/var/lib/jellyfin/plugins/configurations/Jellyfin.Plugin.Webhook.xml"
-WATCHDOG_URL="${WATCHDOG_URL:-http://localhost:5000}"
-
-if [[ -f "${REPO_DIR}/scripts/configure_webhook.py" ]]; then
-  echo "Configuring webhook to trigger upscaling on playback..."
-  echo "  Watchdog URL: ${WATCHDOG_URL}"
-  echo "  Config file: ${WEBHOOK_CONFIG_PATH}"
-  echo ""
-  
-  if sudo python3 "${REPO_DIR}/scripts/configure_webhook.py" "${WATCHDOG_URL}" "${WEBHOOK_CONFIG_PATH}"; then
-    echo ""
-    echo -e "${GREEN}✓ Webhook configured successfully${NC}"
-    echo "  The webhook will automatically trigger upscaling when playback starts"
-    echo "  Restart Jellyfin to load the configuration:"
-    echo "    sudo systemctl restart jellyfin"
-  else
-    echo -e "${YELLOW}⚠ Webhook configuration failed (non-critical)${NC}"
-    echo "  You can configure manually through Jellyfin Dashboard → Plugins → Webhooks"
-    echo "  Or run: sudo python3 ${REPO_DIR}/scripts/configure_webhook.py ${WATCHDOG_URL}"
-  fi
+echo "Testing Jellyfin API connection..."
+if curl -s -f -H "X-Emby-Token: ${JELLYFIN_API_KEY}" "${JELLYFIN_URL}/Sessions" >/dev/null 2>&1; then
+    echo -e "${GREEN}✓ Successfully connected to Jellyfin API${NC}"
 else
-  echo -e "${YELLOW}⚠ Webhook configuration script not found${NC}"
-  echo "  Manual configuration required through Jellyfin Dashboard → Plugins → Webhooks"
+    echo -e "${YELLOW}⚠ Could not connect to Jellyfin API${NC}"
+    echo "  The service will still be installed, but verify:"
+    echo "    - Jellyfin is running at: ${JELLYFIN_URL}"
+    echo "    - API key is valid"
 fi
+
 echo ""
 
-# Step 2.5: Install Jellyfin web overlay files
-echo -e "${BLUE}Step 2.5: Installing Jellyfin progress overlay...${NC}"
-echo "=========================================================================="
-JELLYFIN_WEB_DIR="${JELLYFIN_WEB_DIR:-/usr/share/jellyfin/web}"
+#==============================================================================
+# Step 6: Install API-Based Watchdog Service
+#==============================================================================
 
-if [[ -d "${JELLYFIN_WEB_DIR}" ]]; then
-  echo "Found Jellyfin web directory at: ${JELLYFIN_WEB_DIR}"
-  
-  # Copy CSS files
-  if [[ -f "${REPO_DIR}/jellyfin-plugin/playback-progress-overlay.css" ]]; then
-    echo "Installing progress overlay CSS..."
-    sudo cp "${REPO_DIR}/jellyfin-plugin/playback-progress-overlay.css" "${JELLYFIN_WEB_DIR}/"
-    echo -e "${GREEN}✓ playback-progress-overlay.css installed${NC}"
-  else
-    echo -e "${YELLOW}⚠ playback-progress-overlay.css not found${NC}"
-  fi
-  
-  # Copy JavaScript file
-  if [[ -f "${REPO_DIR}/jellyfin-plugin/playback-progress-overlay.js" ]]; then
-    echo "Installing progress overlay JavaScript..."
-    sudo cp "${REPO_DIR}/jellyfin-plugin/playback-progress-overlay.js" "${JELLYFIN_WEB_DIR}/"
-    echo -e "${GREEN}✓ playback-progress-overlay.js installed${NC}"
-  else
-    echo -e "${YELLOW}⚠ playback-progress-overlay.js not found${NC}"
-  fi
-  
-  # Copy optional centered CSS variant
-  if [[ -f "${REPO_DIR}/jellyfin-plugin/playback-progress-overlay-centered.css" ]]; then
-    echo "Installing centered overlay variant (optional)..."
-    sudo cp "${REPO_DIR}/jellyfin-plugin/playback-progress-overlay-centered.css" "${JELLYFIN_WEB_DIR}/"
-    echo -e "${GREEN}✓ playback-progress-overlay-centered.css installed${NC}"
-  fi
-  
-  echo ""
-  echo "Overlay files installed to: ${JELLYFIN_WEB_DIR}"
-  echo "Restart Jellyfin and refresh browser to see changes."
-  echo ""
+echo -e "${BLUE}Step 6: Installing API-based watchdog service...${NC}"
+echo "=========================================================================="
+
+# Create environment file
+ENV_FILE="/etc/default/srgan-watchdog-api"
+echo "Creating environment configuration..."
+
+sudo tee "$ENV_FILE" > /dev/null << EOF
+# Jellyfin API Configuration
+JELLYFIN_URL=${JELLYFIN_URL}
+JELLYFIN_API_KEY=${JELLYFIN_API_KEY}
+
+# Watchdog Configuration
+UPSCALED_DIR=/mnt/media/upscaled
+SRGAN_QUEUE_FILE=${REPO_DIR}/cache/queue.jsonl
+ENABLE_HLS_STREAMING=1
+HLS_SERVER_HOST=localhost
+HLS_SERVER_PORT=8080
+EOF
+
+sudo chmod 600 "$ENV_FILE"
+echo -e "${GREEN}✓ Environment file created${NC}"
+
+# Create systemd service
+SERVICE_FILE="/etc/systemd/system/srgan-watchdog-api.service"
+echo "Creating systemd service..."
+
+sudo tee "$SERVICE_FILE" > /dev/null << EOF
+[Unit]
+Description=SRGAN Watchdog API-Based Service
+After=network.target docker.service jellyfin.service
+Wants=jellyfin.service
+
+[Service]
+Type=simple
+User=${SUDO_USER:-${USER}}
+WorkingDirectory=${REPO_DIR}
+
+# Load environment
+EnvironmentFile=${ENV_FILE}
+
+# Run watchdog
+ExecStart=$(which python3) ${SCRIPT_DIR}/watchdog_api.py
+
+# Restart on failure
+Restart=always
+RestartSec=5
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=srgan-watchdog-api
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+echo -e "${GREEN}✓ Systemd service created${NC}"
+
+# Reload systemd and start service
+echo "Starting service..."
+sudo systemctl daemon-reload
+sudo systemctl enable srgan-watchdog-api
+sudo systemctl start srgan-watchdog-api
+
+# Wait for service to start
+sleep 2
+
+if systemctl is-active --quiet srgan-watchdog-api; then
+    echo -e "${GREEN}✓ Watchdog service is running${NC}"
 else
-  echo -e "${YELLOW}⚠ Jellyfin web directory not found at: ${JELLYFIN_WEB_DIR}${NC}"
-  echo "  Set JELLYFIN_WEB_DIR environment variable if Jellyfin is in a different location."
-  echo "  You can copy files manually:"
-  echo "    sudo cp ${REPO_DIR}/jellyfin-plugin/playback-progress-overlay.* ${JELLYFIN_WEB_DIR}/"
+    echo -e "${RED}✗ Service failed to start${NC}"
+    echo "Check logs: sudo journalctl -u srgan-watchdog-api -n 50"
+    exit 1
 fi
+
 echo ""
 
-# Step 3: Setup model files (optional)
-echo -e "${BLUE}Step 3: Setting up AI model (optional)...${NC}"
-echo "=========================================================================="
-MODEL_DIR="${REPO_DIR}/models"
-mkdir -p "${MODEL_DIR}"
+#==============================================================================
+# Step 7: Start Docker Container
+#==============================================================================
 
-# Check if model setup script exists and run it
-if [[ -f "${REPO_DIR}/scripts/setup_model.sh" ]]; then
-  # Check if model already exists
-  if [[ -f "${MODEL_DIR}/swift_srgan_4x.pth" ]]; then
-    echo -e "${GREEN}✓ Model file swift_srgan_4x.pth already exists${NC}"
-  elif [[ -f "${MODEL_DIR}/swift_srgan_4x.pth.tar" ]]; then
-    echo "Found swift_srgan_4x.pth.tar, renaming to .pth..."
-    mv "${MODEL_DIR}/swift_srgan_4x.pth.tar" "${MODEL_DIR}/swift_srgan_4x.pth"
-    echo -e "${GREEN}✓ Model file renamed${NC}"
-  else
-    # Model doesn't exist, ask user if they want to download
-    echo "AI model not found."
-    echo ""
-    echo "The AI model is optional - the pipeline works with ffmpeg upscaling by default."
-    echo "Model is only needed if you set SRGAN_ENABLE=1 in docker-compose.yml."
-    echo ""
-    read -p "Download AI model now? (y/N) " -n 1 -r
-    echo ""
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-      bash "${REPO_DIR}/scripts/setup_model.sh"
-    else
-      echo -e "${YELLOW}⚠ Skipping model download${NC}"
-      echo "  Download later with: ./scripts/setup_model.sh"
-    fi
-  fi
+echo -e "${BLUE}Step 7: Starting Docker containers...${NC}"
+echo "=========================================================================="
+
+cd "${REPO_DIR}"
+
+# Start all services
+if docker compose up -d; then
+    echo -e "${GREEN}✓ Docker containers started${NC}"
 else
-  # Fallback: simple model check
-  if [[ -f "${MODEL_DIR}/swift_srgan_4x.pth.tar" ]]; then
-    if [[ ! -f "${MODEL_DIR}/swift_srgan_4x.pth" ]]; then
-      echo "Renaming swift_srgan_4x.pth.tar to swift_srgan_4x.pth..."
-      mv "${MODEL_DIR}/swift_srgan_4x.pth.tar" "${MODEL_DIR}/swift_srgan_4x.pth"
-      echo -e "${GREEN}✓ Model file renamed${NC}"
-    fi
-  elif [[ -f "${MODEL_DIR}/swift_srgan_4x.pth" ]]; then
-    echo -e "${GREEN}✓ Model file found${NC}"
-  else
-    echo -e "${YELLOW}⚠ Model file not found (optional)${NC}"
-    echo "  Download from: https://github.com/Koushik0901/Swift-SRGAN/releases/download/v0.1/swift_srgan_4x.pth.tar"
-    echo "  Or run: ./scripts/setup_model.sh"
-  fi
+    echo -e "${RED}✗ Failed to start containers${NC}"
+    exit 1
 fi
-echo ""
 
-# Step 4: Build Docker images
-echo -e "${BLUE}Step 4: Building Docker images...${NC}"
-echo "=========================================================================="
-docker compose -f "${REPO_DIR}/docker-compose.yml" build
-echo -e "${GREEN}✓ Docker images built${NC}"
-echo ""
-
-# Step 5: Start container
-echo -e "${BLUE}Step 5: Starting srgan-upscaler container...${NC}"
-echo "=========================================================================="
-docker compose -f "${REPO_DIR}/docker-compose.yml" up -d srgan-upscaler
-echo -e "${GREEN}✓ Container started${NC}"
-echo ""
-
-# Step 6: Optional GPU detection
-if [[ "${RUN_GPU_DETECTION:-1}" == "1" ]]; then
-  echo -e "${BLUE}Step 6: Running GPU detection...${NC}"
-  echo "=========================================================================="
-  if bash "${REPO_DIR}/jellyfin-plugin/gpu-detection.sh"; then
-    echo -e "${GREEN}✓ GPU detection completed${NC}"
-  else
-    echo -e "${YELLOW}⚠ GPU detection failed (non-critical)${NC}"
-  fi
-  echo ""
+# Check container status
+sleep 2
+if docker ps | grep -q srgan-upscaler; then
+    echo -e "${GREEN}✓ srgan-upscaler container running${NC}"
 else
-  echo -e "${YELLOW}Skipping GPU detection (set RUN_GPU_DETECTION=1 to enable)${NC}"
-  echo ""
+    echo -e "${YELLOW}⚠ srgan-upscaler container not running${NC}"
 fi
 
-# Step 7: Optional cleanup
-if [[ "${RUN_CLEANUP:-0}" == "1" ]]; then
-  echo -e "${BLUE}Step 7: Cleaning up old upscaled files...${NC}"
-  echo "=========================================================================="
-  if python3 "${REPO_DIR}/scripts/cleanup_upscaled.py"; then
-    echo -e "${GREEN}✓ Cleanup completed${NC}"
-  else
-    echo -e "${YELLOW}⚠ Cleanup failed (non-critical)${NC}"
-  fi
-  echo ""
+if docker ps | grep -q hls-server; then
+    echo -e "${GREEN}✓ hls-server container running${NC}"
 fi
 
-# Step 8: Install systemd watchdog service
-echo -e "${BLUE}Step 8: Installing watchdog systemd service...${NC}"
-echo "=========================================================================="
-if sudo bash "${REPO_DIR}/scripts/install_systemd_watchdog.sh" "${REPO_DIR}"; then
-  echo -e "${GREEN}✓ Watchdog service installed and started${NC}"
-else
-  echo -e "${RED}✗ Watchdog service installation failed${NC}"
-  echo "  You can try installing manually:"
-  echo "  sudo ./scripts/install_systemd_watchdog.sh"
-  exit 1
-fi
 echo ""
 
-# Installation complete
+#==============================================================================
+# Step 8: Create Required Directories
+#==============================================================================
+
+echo -e "${BLUE}Step 8: Creating required directories...${NC}"
+echo "=========================================================================="
+
+# Create output directories
+sudo mkdir -p /mnt/media/upscaled/hls
+sudo chown -R ${SUDO_USER:-${USER}}:${SUDO_USER:-${USER}} /mnt/media/upscaled 2>/dev/null || true
+
+# Create cache directory
+mkdir -p "${REPO_DIR}/cache"
+touch "${REPO_DIR}/cache/queue.jsonl"
+
+echo -e "${GREEN}✓ Directories created${NC}"
+echo ""
+
+#==============================================================================
+# Step 9: Configure Jellyfin Webhook
+#==============================================================================
+
+echo -e "${BLUE}Step 9: Jellyfin webhook configuration...${NC}"
+echo "=========================================================================="
+
+echo ""
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${CYAN}  MANUAL STEP: Configure Jellyfin Webhook${NC}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+echo "In Jellyfin Dashboard → Plugins → Webhook:"
+echo ""
+echo "  1. Click 'Add Generic Destination'"
+echo "  2. Webhook Name: SRGAN Trigger"
+echo "  3. Webhook Url: http://localhost:5432/upscale-trigger"
+echo "  4. Notification Type: ✓ Playback Start"
+echo "  5. Item Type: ✓ Movie, ✓ Episode"
+echo "  6. Template: {\"event\":\"playback_start\"}"
+echo "  7. Click 'Save'"
+echo ""
+echo -e "${YELLOW}Note: Template content doesn't matter - we use API to get file path${NC}"
+echo ""
+
+read -p "Press Enter when webhook is configured..."
+echo ""
+
+#==============================================================================
+# Step 10: Test Installation
+#==============================================================================
+
+echo -e "${BLUE}Step 10: Testing installation...${NC}"
+echo "=========================================================================="
+
+# Test watchdog endpoint
+echo "Testing watchdog API..."
+if curl -s -f http://localhost:5432/status >/dev/null 2>&1; then
+    echo -e "${GREEN}✓ Watchdog API responding${NC}"
+    
+    # Show status
+    STATUS=$(curl -s http://localhost:5432/status)
+    echo "$STATUS" | python3 -m json.tool 2>/dev/null | grep -E "status|jellyfin" | sed 's/^/    /'
+else
+    echo -e "${YELLOW}⚠ Watchdog API not responding yet${NC}"
+fi
+
+# Test currently playing endpoint
+echo ""
+echo "Testing session detection..."
+PLAYING=$(curl -s http://localhost:5432/playing)
+if echo "$PLAYING" | grep -q '"count"'; then
+    COUNT=$(echo "$PLAYING" | python3 -c "import sys, json; print(json.load(sys.stdin)['count'])" 2>/dev/null || echo "0")
+    echo -e "${GREEN}✓ Session detection working (${COUNT} items playing)${NC}"
+else
+    echo -e "${YELLOW}⚠ Session detection needs verification${NC}"
+fi
+
+# Test Docker container access to media
+echo ""
+echo "Testing container media access..."
+FIRST_MEDIA_PATH="${FOUND_PATHS[0]}"
+if docker compose exec -T srgan-upscaler test -d "$FIRST_MEDIA_PATH" 2>/dev/null; then
+    FILE_COUNT=$(docker compose exec -T srgan-upscaler sh -c "find $FIRST_MEDIA_PATH -maxdepth 3 -type f \( -name '*.mkv' -o -name '*.mp4' \) 2>/dev/null | wc -l" | tr -d ' \r')
+    echo -e "${GREEN}✓ Container can access media (${FILE_COUNT} files found)${NC}"
+else
+    echo -e "${YELLOW}⚠ Container cannot access media path: $FIRST_MEDIA_PATH${NC}"
+    echo "  Run: ./scripts/diagnose_path_issue.sh"
+fi
+
+echo ""
+
+#==============================================================================
+# Installation Complete
+#==============================================================================
+
 echo "=========================================================================="
 echo -e "${GREEN}Installation Complete!${NC}"
 echo "=========================================================================="
 echo ""
-echo "What was installed:"
-echo "  ✓ Docker container (srgan-upscaler)"
-echo "  ✓ Watchdog systemd service (auto-starts on boot)"
-if [[ -n "${JELLYFIN_LIB_DIR}" ]]; then
-  echo "  ✓ Jellyfin plugin"
-fi
-if [[ -d "${WEBHOOK_PLUGIN_SRC}" ]] && [[ -n "${WEBHOOK_PLUGIN_DIR}" ]] && [[ -f "${WEBHOOK_PLUGIN_DIR}/Jellyfin.Plugin.Webhook.dll" ]]; then
-  echo "  ✓ Patched webhook plugin (with {{Path}} variable)"
-fi
-if [[ -d "${JELLYFIN_WEB_DIR}" ]] && [[ -f "${JELLYFIN_WEB_DIR}/playback-progress-overlay.css" ]]; then
-  echo "  ✓ Progress overlay (CSS/JS)"
-fi
-if [[ -f "${MODEL_DIR}/swift_srgan_4x.pth" ]]; then
-  echo "  ✓ AI model (optional)"
-fi
+
+echo -e "${CYAN}Services Running:${NC}"
+systemctl is-active --quiet srgan-watchdog-api && echo -e "  ✓ srgan-watchdog-api: ${GREEN}running${NC}" || echo -e "  ✗ srgan-watchdog-api: ${RED}not running${NC}"
+docker ps --format "table {{.Names}}\t{{.Status}}" | grep -E "srgan-upscaler|hls-server" | sed 's/^/  ✓ /' || true
+
 echo ""
-echo "Service Status:"
-if systemctl is-active --quiet srgan-watchdog.service; then
-  echo -e "  Watchdog: ${GREEN}running${NC} ✓"
-else
-  echo -e "  Watchdog: ${YELLOW}check status${NC}"
-fi
-if docker compose -f "${REPO_DIR}/docker-compose.yml" ps | grep -q "srgan-upscaler"; then
-  echo -e "  Container: ${GREEN}running${NC} ✓"
-else
-  echo -e "  Container: ${YELLOW}check status${NC}"
-fi
+echo -e "${CYAN}Quick Commands:${NC}"
+echo "  Service status:  sudo systemctl status srgan-watchdog-api"
+echo "  View logs:       sudo journalctl -u srgan-watchdog-api -f"
+echo "  Restart:         sudo systemctl restart srgan-watchdog-api"
 echo ""
-echo "Next Steps:"
-echo "  1. Restart Jellyfin to load progress overlay:"
-echo "     sudo systemctl restart jellyfin"
-echo "     Then hard-refresh browser: Ctrl+Shift+R"
+echo "  API status:      curl http://localhost:5432/status"
+echo "  Now playing:     curl http://localhost:5432/playing"
 echo ""
-echo "  2. Configure Jellyfin webhook:"
-echo "     See: ${REPO_DIR}/WEBHOOK_CONFIGURATION_CORRECT.md"
-echo ""
-echo "  3. Test the webhook:"
-echo "     python3 ${REPO_DIR}/scripts/test_webhook.py"
-echo ""
-echo "  4. Check service status:"
-echo "     ${REPO_DIR}/scripts/manage_watchdog.sh status"
-echo ""
-echo "  5. View logs:"
-echo "     ${REPO_DIR}/scripts/manage_watchdog.sh logs"
-echo ""
-echo "Documentation:"
-echo "  Getting Started: ${REPO_DIR}/GETTING_STARTED.md"
-echo "  Webhook Setup:   ${REPO_DIR}/WEBHOOK_CONFIGURATION_CORRECT.md"
-echo "  Service Mgmt:    ${REPO_DIR}/SYSTEMD_SERVICE.md"
-echo "  Troubleshoot:    ${REPO_DIR}/TROUBLESHOOTING.md"
-echo ""
-echo "Quick health check:"
-if curl -s http://localhost:5000/health > /dev/null 2>&1; then
-  echo -e "  Watchdog: ${GREEN}responding${NC} ✓"
-else
-  echo -e "  Watchdog: ${YELLOW}not responding yet${NC} (may need a few seconds)"
-fi
+echo "  Container logs:  docker logs srgan-upscaler -f"
+echo "  Restart:         docker compose restart srgan-upscaler"
 echo ""
 
-# Final {{Path}} verification
-echo "=========================================================================="
-echo "{{Path}} Variable Verification"
-echo "=========================================================================="
-WEBHOOK_HELPERS="${REPO_DIR}/jellyfin-plugin-webhook/Jellyfin.Plugin.Webhook/Helpers/DataObjectHelpers.cs"
-if [[ -f "${WEBHOOK_HELPERS}" ]]; then
-  if grep -q '"Path".*item\.Path' "${WEBHOOK_HELPERS}"; then
-    echo -e "${GREEN}✓ {{Path}} patch verified in source code${NC}"
-  else
-    echo -e "${YELLOW}⚠ {{Path}} patch NOT found in source code${NC}"
-    echo "  This means Path variable will be empty in webhooks!"
-    echo "  Run: sudo ./scripts/fix_webhook_path_complete.sh"
-  fi
-else
-  echo -e "${YELLOW}⚠ Webhook source not available${NC}"
-fi
-
-WEBHOOK_CONFIG="/var/lib/jellyfin/plugins/configurations/Jellyfin.Plugin.Webhook.xml"
-if [[ -f "${WEBHOOK_CONFIG}" ]]; then
-  if grep -q "{{Path}}" "${WEBHOOK_CONFIG}"; then
-    echo -e "${GREEN}✓ {{Path}} found in webhook configuration${NC}"
-  else
-    echo -e "${YELLOW}⚠ {{Path}} NOT in webhook configuration${NC}"
-    echo "  Run: sudo python3 ${REPO_DIR}/scripts/configure_webhook.py http://localhost:5000"
-  fi
-fi
-
-WEBHOOK_DLL_DIR=$(find /var/lib/jellyfin/plugins -maxdepth 1 -type d -name "Webhook_*" 2>/dev/null | head -1)
-if [[ -n "${WEBHOOK_DLL_DIR}" ]] && [[ -f "${WEBHOOK_DLL_DIR}/Jellyfin.Plugin.Webhook.dll" ]]; then
-  DLL_AGE=$(($(date +%s) - $(stat -c %Y "${WEBHOOK_DLL_DIR}/Jellyfin.Plugin.Webhook.dll" 2>/dev/null || stat -f %m "${WEBHOOK_DLL_DIR}/Jellyfin.Plugin.Webhook.dll" 2>/dev/null || echo 0)))
-  if [[ $DLL_AGE -lt 600 ]]; then
-    echo -e "${GREEN}✓ Webhook DLL recently updated ($DLL_AGE seconds ago)${NC}"
-  else
-    echo -e "${YELLOW}⚠ Webhook DLL is old ($DLL_AGE seconds ago)${NC}"
-    echo "  The patched version may not be installed"
-  fi
-fi
+echo -e "${CYAN}Configuration:${NC}"
+echo "  Environment:     ${ENV_FILE}"
+echo "  Service:         ${SERVICE_FILE}"
+echo "  Queue file:      ${REPO_DIR}/cache/queue.jsonl"
+echo "  Output dir:      /mnt/media/upscaled/"
 echo ""
 
-exit 0
+echo -e "${CYAN}Next Steps:${NC}"
+echo "  1. ✓ Jellyfin webhook configured (manual step above)"
+echo "  2. Play a video in Jellyfin"
+echo "  3. Monitor: sudo journalctl -u srgan-watchdog-api -f"
+echo "  4. Check output: ls -lh /mnt/media/upscaled/hls/"
+echo ""
+
+echo -e "${CYAN}Documentation:${NC}"
+echo "  Quick start:     ${REPO_DIR}/QUICK_START_API.md"
+echo "  Troubleshooting: ${REPO_DIR}/FIX_DOCKER_CANNOT_FIND_FILE.md"
+echo "  Architecture:    ${REPO_DIR}/ARCHITECTURE_SIMPLE.md"
+echo "  All docs:        ${REPO_DIR}/DOCUMENTATION_INDEX.md"
+echo ""
+
+echo -e "${GREEN}🎉 Ready to upscale videos!${NC}"
+echo ""
