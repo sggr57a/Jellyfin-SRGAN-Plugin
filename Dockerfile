@@ -81,5 +81,38 @@ ENV NVIDIA_DRIVER_CAPABILITIES=compute,video,utility
 # install NVIDIA patch to remove restriction on number of encoding sessions
 RUN git clone https://github.com/sggr57a/nvidia-patch.git && cd nvidia-patch && bash ./patch.sh
 
-# Entry point to run the script
-ENTRYPOINT ["python", "/app/scripts/srgan_pipeline.py"]
+# Clone NVIDIA patch (will be applied at runtime if GPU is detected)
+RUN git clone https://github.com/sggr57a/nvidia-patch.git /opt/nvidia-patch || true
+
+# Create entrypoint script
+COPY <<'EOF' /entrypoint.sh
+#!/bin/bash
+set -e
+
+# Apply NVIDIA patch if GPU is available and not already patched
+if command -v nvidia-smi >/dev/null 2>&1; then
+    if nvidia-smi >/dev/null 2>&1; then
+        echo "GPU detected, checking NVIDIA driver patch status..."
+        if [ -d /opt/nvidia-patch ]; then
+            cd /opt/nvidia-patch
+            if bash ./patch.sh 2>&1 | grep -q "Already patched\|Patched"; then
+                echo "✓ NVIDIA driver patch applied/verified"
+            else
+                echo "⚠ NVIDIA patch skipped (may already be patched or not needed)"
+            fi
+        fi
+    else
+        echo "GPU not accessible, skipping NVIDIA patch"
+    fi
+else
+    echo "nvidia-smi not found, skipping NVIDIA patch"
+fi
+
+# Run the main application
+exec python /app/scripts/srgan_pipeline.py "$@"
+EOF
+
+RUN chmod +x /entrypoint.sh
+
+# Entry point runs patch check then starts pipeline
+ENTRYPOINT ["/entrypoint.sh"]
