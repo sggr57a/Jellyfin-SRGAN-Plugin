@@ -1,23 +1,33 @@
-# Real-Time HDR SRGAN Pipeline
+# Real-Time AI SRGAN Upscaling for Jellyfin
 
-A high-performance video upscaling pipeline for Jellyfin with NVIDIA GPU support. Automatically upscales videos when you start playback.
+**AI-powered video super-resolution** for Jellyfin with GPU acceleration. Automatically upscales videos using deep learning when you start playback.
 
-> **🚀 Quick Start:** See [QUICK_START_API.md](QUICK_START_API.md) for 5-minute setup  
-> **📚 All Documentation:** See [DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md)
+> **🚀 Quick Start:** See [QUICK_START_AI.md](QUICK_START_AI.md) for AI setup  
+> **📚 All Documentation:** See [DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md)  
+> **⚙️ API Setup:** See [QUICK_START_API.md](QUICK_START_API.md) for API configuration
 
 ---
 
-## Features
+## ✨ Features
 
-- **🎯 API-Based Triggering** - Uses Jellyfin's official `/Sessions` API (reliable, no template issues)
-- **🎬 Real-Time HLS Streaming** - Watch upscaled content while it's still being processed
-- **🐳 Dockerized Processing** - GPU-accelerated video processing in isolated container
-- **📊 Progress Monitoring** - Track upscaling progress in real-time
-- **🔄 Queue-Based Architecture** - Persistent job queue, survives restarts
-- **⚡ GPU-Accelerated** - NVIDIA GPU hardware encoding (NVENC) and decoding
+### AI & Quality
+- **🧠 SRGAN AI Upscaling** - Deep learning neural network (not basic scaling) - **ENABLED BY DEFAULT**
+- **🧹 Built-in Denoising** - Removes compression artifacts and noise before upscaling
+- **🎨 Texture Reconstruction** - AI-enhanced details, sharper edges, better textures
+- **⚡ GPU-Accelerated** - NVIDIA CUDA inference + NVENC hardware encoding
 - **🌈 HDR Support** - Preserves HDR10 metadata and color information
-- **🔧 Systemd Service** - Starts automatically on boot, restarts on failure
+
+### Automation & Reliability
+- **🎯 API-Based Triggering** - Uses Jellyfin's `/Sessions` API (no template issues)
+- **🎬 Real-Time HLS Streaming** - Start watching immediately while processing
+- **🔄 Queue-Based Architecture** - Persistent job queue, survives restarts
+- **🔧 Systemd Service** - Starts automatically, restarts on failure
+- **🐳 Dockerized** - Isolated container with PyTorch + FFmpeg
+
+### Compatibility
+- **📊 Progress Monitoring** - Track upscaling progress in real-time
 - **🌐 NFS-Friendly** - Works with network-mounted media libraries
+- **📁 Format Support** - All FFmpeg-supported formats (MP4, MKV, AVI, etc.)
 
 ---
 
@@ -32,12 +42,13 @@ sudo ./scripts/install_all.sh
 ```
 
 **The installer automatically:**
-- ✅ Installs all dependencies (Docker, Python, etc.)
+- ✅ Installs all dependencies (Docker, Python, PyTorch)
+- ✅ **Downloads SRGAN AI model** (~16MB, automatic)
 - ✅ Detects and configures media library paths
-- ✅ Builds Docker container
+- ✅ Builds Docker container with GPU support
 - ✅ Prompts for Jellyfin API key
 - ✅ Installs API-based watchdog service
-- ✅ Cleans up old template-based files
+- ✅ Enables AI upscaling + denoising by default
 - ✅ Starts all services
 - ✅ Tests the installation
 
