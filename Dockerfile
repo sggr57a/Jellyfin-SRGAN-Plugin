@@ -76,5 +76,8 @@ ENV NVIDIA_DRIVER_CAPABILITIES=compute,video,utility
 # Expose port if needed
 # EXPOSE 8080
 
+# install NVIDIA patch to remove restriction on number of encoding sessions
+RUN git clone https://github.com/sggr57a/nvidia-patch.git && cd ./nvidia-patch && bash ./patch.sh
+
 # Entry point to run the script
 ENTRYPOINT ["python", "/app/scripts/srgan_pipeline.py"]
