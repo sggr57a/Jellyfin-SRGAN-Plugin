@@ -1,8 +1,9 @@
 services:
   srgan-upscaler:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    #build:
+    #  context: .
+    #  dockerfile: Dockerfile
+    build: .
     image: srgan_live_upscaler:latest
     container_name: srgan-upscaler
     restart: unless-stopped
