@@ -207,7 +207,7 @@ for script in "${OLD_SCRIPTS[@]}"; do
     fi
 done
 
-docker stop $(docker ps -qa) ; docker rm $(docker ps -qa) ; docker system prune -af
+#docker stop $(docker ps -qa) ; docker rm $(docker ps -qa) ; docker system prune -af
 
 echo -e "${GREEN}✓ Cleanup complete${NC}"
 echo ""
