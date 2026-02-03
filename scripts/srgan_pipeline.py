@@ -66,6 +66,19 @@ def _run_ffmpeg(input_path, output_path, width, height):
     subprocess.check_call(cmd)
 
 
+def _escape_tee_path(path):
+    """
+    Escape special characters in file paths for FFmpeg tee muxer.
+    Tee muxer treats [, ], :, | as special characters.
+    """
+    # Escape special characters for tee muxer
+    path = path.replace("'", "'\\''")  # Single quotes
+    path = path.replace("[", r"\[")    # Opening bracket
+    path = path.replace("]", r"\]")    # Closing bracket
+    path = path.replace(":", r"\:")    # Colon (in non-URL contexts)
+    return path
+
+
 def _run_ffmpeg_streaming(input_path, output_path, hls_dir, width, height):
     """
     Process video with dual output for real-time streaming:
@@ -140,11 +153,16 @@ def _run_ffmpeg_streaming(input_path, output_path, hls_dir, width, height):
     # Format: [options1]output1|[options2]output2
     cmd.extend(["-f", "tee"])
     
+    # Escape special characters in paths for tee muxer
+    hls_dir_escaped = _escape_tee_path(hls_dir)
+    hls_playlist_escaped = _escape_tee_path(hls_playlist)
+    output_path_escaped = _escape_tee_path(output_path)
+    
     tee_output = (
         f"[f=hls:hls_time={hls_time}:hls_list_size={hls_list_size}:"
-        f"hls_flags={hls_flags}:hls_segment_filename={hls_dir}/segment_%03d.ts]"
-        f"{hls_playlist}|"
-        f"[f=mpegts]{output_path}"
+        f"hls_flags={hls_flags}:hls_segment_filename={hls_dir_escaped}/segment_%03d.ts]"
+        f"{hls_playlist_escaped}|"
+        f"[f=mpegts]{output_path_escaped}"
     )
     
     cmd.append(tee_output)
