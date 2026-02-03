@@ -119,10 +119,27 @@ python3 -m pip install --user flask requests >/dev/null 2>&1 || \
     sudo pip3 install flask requests >/dev/null 2>&1 || true
 echo -e "${GREEN}✓ Python packages installed${NC}"
 
-# Check for Jellyfin
-JELLYFIN_URL="http://localhost:8096"
+# Check for Jellyfin and detect port
+echo "Detecting Jellyfin..."
+
+# Try to detect Jellyfin port
+JELLYFIN_PORT=""
 if systemctl is-active --quiet jellyfin 2>/dev/null; then
     echo -e "${GREEN}✓ Jellyfin server running${NC}"
+    
+    # Try to detect port from netstat/ss
+    DETECTED_PORT=$(ss -tlnp 2>/dev/null | grep jellyfin | grep LISTEN | head -1 | awk '{print $4}' | awk -F: '{print $NF}')
+    
+    if [[ -z "$DETECTED_PORT" ]]; then
+        # Try alternative detection
+        DETECTED_PORT=$(netstat -tlnp 2>/dev/null | grep jellyfin | grep LISTEN | head -1 | awk '{print $4}' | awk -F: '{print $NF}')
+    fi
+    
+    if [[ -n "$DETECTED_PORT" ]]; then
+        echo "  Detected Jellyfin on port: ${DETECTED_PORT}"
+        JELLYFIN_PORT="$DETECTED_PORT"
+    fi
+    
     JELLYFIN_FOUND=true
 elif check_command jellyfin; then
     echo -e "${YELLOW}⚠ Jellyfin installed but not running${NC}"
@@ -131,6 +148,26 @@ else
     echo -e "${YELLOW}⚠ Jellyfin not detected${NC}"
     echo "  Install from: https://jellyfin.org/downloads/"
     JELLYFIN_FOUND=false
+fi
+
+# Prompt for Jellyfin URL (with detected port as default)
+if [[ -n "$JELLYFIN_PORT" ]]; then
+    DEFAULT_URL="http://localhost:${JELLYFIN_PORT}"
+else
+    DEFAULT_URL="http://localhost:8096"
+fi
+
+echo ""
+read -p "Jellyfin URL [${DEFAULT_URL}]: " JELLYFIN_URL_INPUT
+JELLYFIN_URL="${JELLYFIN_URL_INPUT:-$DEFAULT_URL}"
+
+# Test if Jellyfin is accessible
+echo "Testing Jellyfin connectivity..."
+if curl -s -f "${JELLYFIN_URL}/System/Info/Public" >/dev/null 2>&1; then
+    echo -e "${GREEN}✓ Jellyfin accessible at ${JELLYFIN_URL}${NC}"
+else
+    echo -e "${YELLOW}⚠ Could not connect to Jellyfin at ${JELLYFIN_URL}${NC}"
+    echo "  The installation will continue, but verify the URL is correct"
 fi
 
 echo ""
@@ -355,7 +392,7 @@ if [[ -z "$JELLYFIN_API_KEY" ]]; then
     echo "The API-based watchdog needs a Jellyfin API key to query sessions."
     echo ""
     echo "To create an API key:"
-    echo "  1. Open Jellyfin Dashboard"
+    echo "  1. Open Jellyfin Dashboard at: ${JELLYFIN_URL}"
     echo "  2. Go to: Advanced → API Keys"
     echo "  3. Click '+' button"
     echo "  4. Application name: SRGAN Watchdog"
@@ -368,9 +405,11 @@ if [[ -z "$JELLYFIN_API_KEY" ]]; then
         exit 1
     fi
     
-    # Save API key for future use
+    # Save API key and URL for future use
     echo "$JELLYFIN_API_KEY" > "$API_KEY_FILE"
+    echo "$JELLYFIN_URL" > "${REPO_DIR}/.jellyfin_url"
     chmod 600 "$API_KEY_FILE"
+    chmod 600 "${REPO_DIR}/.jellyfin_url"
 fi
 
 # Test API connectivity
@@ -378,11 +417,20 @@ echo ""
 echo "Testing Jellyfin API connection..."
 if curl -s -f -H "X-Emby-Token: ${JELLYFIN_API_KEY}" "${JELLYFIN_URL}/Sessions" >/dev/null 2>&1; then
     echo -e "${GREEN}✓ Successfully connected to Jellyfin API${NC}"
+    
+    # Test with a real query
+    SESSION_COUNT=$(curl -s -H "X-Emby-Token: ${JELLYFIN_API_KEY}" "${JELLYFIN_URL}/Sessions" | grep -c '"Id"' || echo "0")
+    echo "  Active sessions: ${SESSION_COUNT}"
 else
     echo -e "${YELLOW}⚠ Could not connect to Jellyfin API${NC}"
     echo "  The service will still be installed, but verify:"
     echo "    - Jellyfin is running at: ${JELLYFIN_URL}"
     echo "    - API key is valid"
+    echo ""
+    read -p "Continue anyway? (y/N): " CONTINUE
+    if [[ ! "$CONTINUE" =~ ^[Yy]$ ]]; then
+        exit 1
+    fi
 fi
 
 echo ""
