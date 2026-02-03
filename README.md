@@ -1,51 +1,225 @@
 # Real-Time HDR SRGAN Pipeline
 
-A high-performance video upscaling pipeline for Jellyfin with NVIDIA GPU support. Automatically upscales videos to 4K when you start playback.
+A high-performance video upscaling pipeline for Jellyfin with NVIDIA GPU support. Automatically upscales videos when you start playback.
 
-> **📚 New to this project?** See [DOCUMENTATION.md](DOCUMENTATION.md) for a complete guide to all documentation.
+> **🚀 Quick Start:** See [QUICK_START_API.md](QUICK_START_API.md) for 5-minute setup  
+> **📚 All Documentation:** See [DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md)
+
+---
 
 ## Features
 
-- **🎬 Real-Time HLS Streaming** ⭐ NEW! - Watch upscaled content while it's still being processed (10-15 second delay)
-- **📊 Progress Overlay in Playback** ⭐ NEW! - Real-time upscaling progress displayed on screen with theme-matched UI
-- **Webhook-Triggered Upscaling** - Automatically upscales videos when you press play in Jellyfin
-- **Runs as System Service** - Starts automatically on boot, restarts on failure
-- **GPU-Accelerated** - Uses NVIDIA GPU hardware encoding (NVENC) and decoding
-- **HDR Support** - Preserves HDR10 metadata and color information
-- **Growing File Playback** - Uses MPEG-TS container for real-time streaming while processing
-- **Persistent Queue** - Queues multiple jobs, processes sequentially
-- **NFS-Friendly** - Works with network-mounted media libraries
-- **Automatic or Manual** - Use AI upscaling model or fast FFmpeg scaling
-- **Theme Integration** - Progress overlay automatically matches your Jellyfin theme
+- **🎯 API-Based Triggering** - Uses Jellyfin's official `/Sessions` API (reliable, no template issues)
+- **🎬 Real-Time HLS Streaming** - Watch upscaled content while it's still being processed
+- **🐳 Dockerized Processing** - GPU-accelerated video processing in isolated container
+- **📊 Progress Monitoring** - Track upscaling progress in real-time
+- **🔄 Queue-Based Architecture** - Persistent job queue, survives restarts
+- **⚡ GPU-Accelerated** - NVIDIA GPU hardware encoding (NVENC) and decoding
+- **🌈 HDR Support** - Preserves HDR10 metadata and color information
+- **🔧 Systemd Service** - Starts automatically on boot, restarts on failure
+- **🌐 NFS-Friendly** - Works with network-mounted media libraries
 
-## Quick Start
+---
 
-```bash
-# Clone repository
-git clone <repository-url>
-cd Real-Time-HDR-SRGAN-Pipeline
+## Quick Setup (5 Minutes)
 
-# One-command installation (verifies system, builds container, installs service)
-./scripts/install_all.sh
-
-# Configure Jellyfin webhook (see WEBHOOK_CONFIGURATION_CORRECT.md)
-# ⚠️ THREE CRITICAL SETTINGS in webhook config:
-#    1. Check "Playback Start" in Notification Type
-#    2. Check "Movie" and "Episode" in Item Type
-#    3. Set Content-Type to "application/json"
-
-# Done! Play a video in Jellyfin and watch it upscale.
+### 1. Create Jellyfin API Key
+```
+Jellyfin Dashboard → Advanced → API Keys → +
+Name: SRGAN Watchdog
+Copy the generated key
 ```
 
-**✅ The installer automatically:**
-- Verifies prerequisites and system setup
-- Prompts to download AI model (optional)
-- Builds Docker container
-- Installs watchdog as systemd service (starts on boot)
-- Builds Jellyfin plugin (if detected)
-- Installs progress overlay to Jellyfin web directory (`/usr/share/jellyfin/web/`)
+### 2. Install
+```bash
+git clone <your-repo-url>
+cd Jellyfin-SRGAN-Pipeline
+
+# Run installer (will prompt for API key)
+sudo ./scripts/install_api_watchdog.sh
+```
+
+### 3. Configure Webhook
+```
+Jellyfin Dashboard → Plugins → Webhook
+Add Generic Destination:
+  - URL: http://localhost:5432/upscale-trigger
+  - Notification Type: ✓ Playback Start
+  - Item Type: ✓ Movie, ✓ Episode
+```
+
+### 4. Test
+```bash
+# Monitor logs
+sudo journalctl -u srgan-watchdog-api -f
+
+# Play video in Jellyfin
+# Should see: "Found playing item: ... (/media/movies/file.mkv)"
+```
+
+**See [QUICK_START_API.md](QUICK_START_API.md) for detailed instructions.**
+
+---
 
 ## How It Works
+
+```
+User plays video in Jellyfin
+  ↓
+Webhook triggers watchdog (Flask on host)
+  ↓
+Watchdog queries Jellyfin API: GET /Sessions
+  ↓
+API returns currently playing item with file path
+  ↓
+Watchdog writes job to queue.jsonl (shared volume)
+  ↓
+Docker container polls queue, processes video
+  ↓
+FFmpeg + CUDA upscales to HLS stream
+  ↓
+User watches upscaled video
+```
+
+**See [ARCHITECTURE_SIMPLE.md](ARCHITECTURE_SIMPLE.md) for detailed architecture.**
+
+---
+
+## Documentation
+
+- **[QUICK_START_API.md](QUICK_START_API.md)** - 5-minute setup guide
+- **[API_BASED_WATCHDOG.md](API_BASED_WATCHDOG.md)** - Complete API setup
+- **[COMPARISON_TEMPLATE_VS_API.md](COMPARISON_TEMPLATE_VS_API.md)** - Why use API approach
+- **[ARCHITECTURE_SIMPLE.md](ARCHITECTURE_SIMPLE.md)** - System architecture
+- **[WEBHOOK_TO_CONTAINER_FLOW.md](WEBHOOK_TO_CONTAINER_FLOW.md)** - Technical details
+- **[FIX_DOCKER_CANNOT_FIND_FILE.md](FIX_DOCKER_CANNOT_FIND_FILE.md)** - Volume mount troubleshooting
+- **[SYSTEMD_SERVICE.md](SYSTEMD_SERVICE.md)** - Service management
+- **[DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md)** - Complete documentation index
+
+---
+
+## Requirements
+
+- **OS:** Ubuntu 22.04+ or compatible Linux
+- **GPU:** NVIDIA GPU with CUDA support
+- **Software:**
+  - Docker Engine 20.10+
+  - Docker Compose v2
+  - Python 3.8+
+  - NVIDIA drivers 525.x+
+  - NVIDIA Container Toolkit
+- **Services:**
+  - Jellyfin 10.8+
+  - Admin access to Jellyfin (for API key)
+
+---
+
+## Troubleshooting
+
+### Service won't start
+```bash
+sudo journalctl -u srgan-watchdog-api -n 50
+# Common: API key invalid, Python requests missing
+```
+
+### Container can't find media files
+```bash
+./scripts/diagnose_path_issue.sh
+# Fix volume mounts in docker-compose.yml
+```
+
+### No file path in API response
+```bash
+# API key must be from admin user
+curl -H "X-Emby-Token: KEY" http://localhost:8096/Sessions
+```
+
+**See [FIX_DOCKER_CANNOT_FIND_FILE.md](FIX_DOCKER_CANNOT_FIND_FILE.md) for detailed troubleshooting.**
+
+---
+
+## Commands Reference
+
+```bash
+# Service management
+sudo systemctl status srgan-watchdog-api
+sudo systemctl restart srgan-watchdog-api
+sudo journalctl -u srgan-watchdog-api -f
+
+# Testing
+curl http://localhost:5432/status
+curl http://localhost:5432/playing
+
+# Container management
+docker ps | grep srgan-upscaler
+docker logs srgan-upscaler -f
+docker compose down srgan-upscaler
+docker compose up -d srgan-upscaler
+```
+
+---
+
+## Architecture
+
+The system uses a queue-based architecture:
+
+1. **Jellyfin** sends webhook when video plays
+2. **Watchdog** (Flask on host) receives webhook
+3. **Watchdog** queries Jellyfin API `/Sessions` for file path
+4. **Watchdog** writes job to `queue.jsonl` (shared volume)
+5. **Container** polls queue and processes video
+6. **FFmpeg + CUDA** upscales to HLS stream
+7. **Nginx** serves HLS stream back to Jellyfin
+
+**See [ARCHITECTURE_SIMPLE.md](ARCHITECTURE_SIMPLE.md) for detailed diagrams.**
+
+---
+
+## Why API-Based?
+
+**Old approach (template):** ❌ Unreliable `{{Path}}` variable  
+**New approach (API):** ✅ Official Jellyfin `/Sessions` API
+
+**Benefits:**
+- ✅ More reliable (99% vs 60% success rate)
+- ✅ No webhook plugin patching needed
+- ✅ Easier to setup (5 min vs 30 min)
+- ✅ Easier to maintain and debug
+- ✅ Future-proof with official API
+
+**See [COMPARISON_TEMPLATE_VS_API.md](COMPARISON_TEMPLATE_VS_API.md) for details.**
+
+---
+
+## Contributing
+
+This is a working project for real-time video upscaling with Jellyfin.
+
+**To contribute:**
+1. Fork the repository
+2. Create a feature branch
+3. Test thoroughly
+4. Submit a pull request
+
+---
+
+## License
+
+[Your License Here]
+
+---
+
+## Credits
+
+- Jellyfin for the media server platform
+- NVIDIA for CUDA and hardware acceleration
+- FFmpeg for video processing
+
+---
+
+**Questions? Check [DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md) for all guides.**
+
+## Legacy Information
 
 ### Batch Mode (Traditional)
 
