@@ -366,7 +366,7 @@ echo "Building srgan-upscaler container from ${REPO_DIR}..."
 echo "Using docker-compose.yml and Dockerfile in current directory"
 echo ""
 
-if docker build srgan-upscaler; then
+if docker compose build srgan-upscaler; then
     echo -e "${GREEN}✓ Container built successfully${NC}"
 else
     echo -e "${RED}✗ Container build failed${NC}"
