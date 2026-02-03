@@ -43,13 +43,21 @@ def _run_ffmpeg(input_path, output_path, width, height):
         encoder,
         "-preset",
         preset,
-        "-delay",
-        delay,
-        "-crf",
-        "18",
+    ]
+    
+    # Use appropriate quality option based on encoder
+    if "nvenc" in encoder.lower():
+        # NVENC encoders use -cq (Constant Quality)
+        cmd.extend(["-cq", "23"])
+    else:
+        # Software encoders use -crf (Constant Rate Factor)
+        cmd.extend(["-crf", "18"])
+    
+    cmd.extend([
         "-c:a",
         "copy",
-    ]
+    ])
+    
     if bufsize:
         cmd.extend(["-bufsize", bufsize])
     if output_path.lower().endswith(".ts"):
