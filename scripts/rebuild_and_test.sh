@@ -46,12 +46,29 @@ echo ""
 echo -e "${BLUE}Step 3: Rebuilding container (this may take a few minutes)...${NC}"
 echo ""
 
+# Verify we're in correct directory with required files
+if [[ ! -f "docker-compose.yml" ]] || [[ ! -f "Dockerfile" ]]; then
+    echo -e "${RED}✗ Missing docker-compose.yml or Dockerfile${NC}"
+    echo "Current directory: $(pwd)"
+    echo "docker-compose.yml exists: $(test -f docker-compose.yml && echo 'yes' || echo 'no')"
+    echo "Dockerfile exists: $(test -f Dockerfile && echo 'yes' || echo 'no')"
+    exit 1
+fi
+
+echo "Building from: $(pwd)"
+echo ""
+
 if docker compose build --no-cache srgan-upscaler; then
     echo ""
     echo -e "${GREEN}✓ Container rebuilt successfully${NC}"
 else
     echo ""
     echo -e "${RED}✗ Build failed${NC}"
+    echo ""
+    echo "Debug info:"
+    echo "  Directory: $(pwd)"
+    echo "  Files present:"
+    ls -la docker-compose.yml Dockerfile 2>&1 | head -5
     exit 1
 fi
 

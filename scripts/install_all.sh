@@ -349,11 +349,32 @@ echo "==========================================================================
 
 cd "${REPO_DIR}"
 
-echo "Building srgan-upscaler container..."
+# Verify we're in the right directory
+if [[ ! -f "docker-compose.yml" ]]; then
+    echo -e "${RED}✗ docker-compose.yml not found in ${REPO_DIR}${NC}"
+    echo "Current directory: $(pwd)"
+    exit 1
+fi
+
+if [[ ! -f "Dockerfile" ]]; then
+    echo -e "${RED}✗ Dockerfile not found in ${REPO_DIR}${NC}"
+    echo "Current directory: $(pwd)"
+    exit 1
+fi
+
+echo "Building srgan-upscaler container from ${REPO_DIR}..."
+echo "Using docker-compose.yml and Dockerfile in current directory"
+echo ""
+
 if docker compose build srgan-upscaler; then
     echo -e "${GREEN}✓ Container built successfully${NC}"
 else
     echo -e "${RED}✗ Container build failed${NC}"
+    echo ""
+    echo "Debug information:"
+    echo "  Working directory: $(pwd)"
+    echo "  docker-compose.yml exists: $(test -f docker-compose.yml && echo 'yes' || echo 'no')"
+    echo "  Dockerfile exists: $(test -f Dockerfile && echo 'yes' || echo 'no')"
     exit 1
 fi
 
