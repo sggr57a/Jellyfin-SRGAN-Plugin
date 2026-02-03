@@ -221,58 +221,45 @@ echo "Updating docker-compose.yml with volume mounts..."
 # Backup current docker-compose.yml
 cp "${REPO_DIR}/docker-compose.yml" "${REPO_DIR}/docker-compose.yml.backup.$(date +%Y%m%d_%H%M%S)"
 
-# Create volume mounts configuration
-VOLUMES_CONFIG="    volumes:
-      # Queue file (shared communication)
+# Build the volumes section with detected paths
+VOLUMES_SECTION="    volumes:
+      # Queue file (shared with watchdog)
       - ./cache:/app/cache
       
       # AI models
       - ./models:/app/models:ro
       
-      # Output directory
-      - /mnt/media/upscaled:/data/upscaled
+      # Output directory (HLS streams + final files)
+      - ./upscaled:/data/upscaled
       
       # Media input paths (auto-detected)"
 
 for path in "${FOUND_PATHS[@]}"; do
-    VOLUMES_CONFIG="${VOLUMES_CONFIG}
+    VOLUMES_SECTION="${VOLUMES_SECTION}
       - ${path}:${path}:ro"
 done
 
-# Use Python to update docker-compose.yml properly
-python3 << EOPY
-import yaml
-import sys
+# Update docker-compose.yml using sed (more reliable than yaml module)
+# Find the volumes section and replace it
+sed -i.bak "/^    volumes:/,/^    [a-z]/ {
+    /^    volumes:/!{/^    [a-z]/!d}
+}" "${REPO_DIR}/docker-compose.yml"
 
-try:
-    with open('${REPO_DIR}/docker-compose.yml', 'r') as f:
-        compose = yaml.safe_load(f)
-    
-    if 'services' in compose and 'srgan-upscaler' in compose['services']:
-        # Build volumes list
-        volumes = [
-            './cache:/app/cache',
-            './models:/app/models:ro',
-            '/mnt/media/upscaled:/data/upscaled'
-        ]
-        
-        # Add detected media paths
-        for path in ${FOUND_PATHS[@]}:
-            volumes.append(f'{path}:{path}:ro')
-        
-        compose['services']['srgan-upscaler']['volumes'] = volumes
-        
-        with open('${REPO_DIR}/docker-compose.yml', 'w') as f:
-            yaml.dump(compose, f, default_flow_style=False, sort_keys=False)
-        
-        print('✓ docker-compose.yml updated')
-    else:
-        print('✗ Invalid docker-compose.yml structure', file=sys.stderr)
-        sys.exit(1)
-except Exception as e:
-    # Fallback to manual edit if yaml module not available
-    print(f'Using manual configuration (yaml module unavailable): {e}')
-EOPY
+# Insert new volumes section after "volumes:" line in srgan-upscaler service
+awk -v volumes="$VOLUMES_SECTION" '
+    /^  srgan-upscaler:/ { in_service=1 }
+    /^  [a-z]/ && !/^  srgan-upscaler:/ { in_service=0 }
+    /^    volumes:/ && in_service {
+        print volumes
+        # Skip old volume lines until next section
+        while (getline && /^      -/) {}
+        if ($0 !~ /^      -/) print
+        next
+    }
+    { print }
+' "${REPO_DIR}/docker-compose.yml" > "${REPO_DIR}/docker-compose.yml.tmp"
+
+mv "${REPO_DIR}/docker-compose.yml.tmp" "${REPO_DIR}/docker-compose.yml"
 
 echo -e "${GREEN}✓ Volume mounts configured${NC}"
 echo ""
@@ -378,7 +365,7 @@ JELLYFIN_URL=${JELLYFIN_URL}
 JELLYFIN_API_KEY=${JELLYFIN_API_KEY}
 
 # Watchdog Configuration
-UPSCALED_DIR=/mnt/media/upscaled
+UPSCALED_DIR=${REPO_DIR}/upscaled
 SRGAN_QUEUE_FILE=${REPO_DIR}/cache/queue.jsonl
 ENABLE_HLS_STREAMING=1
 HLS_SERVER_HOST=localhost
@@ -482,11 +469,11 @@ echo -e "${BLUE}Step 8: Creating required directories...${NC}"
 echo "=========================================================================="
 
 # Create output directories
-sudo mkdir -p /mnt/media/upscaled/hls
-sudo chown -R ${SUDO_USER:-${USER}}:${SUDO_USER:-${USER}} /mnt/media/upscaled 2>/dev/null || true
-
-# Create cache directory
+mkdir -p "${REPO_DIR}/upscaled/hls"
 mkdir -p "${REPO_DIR}/cache"
+mkdir -p "${REPO_DIR}/models"
+
+# Create queue file
 touch "${REPO_DIR}/cache/queue.jsonl"
 
 echo -e "${GREEN}✓ Directories created${NC}"
