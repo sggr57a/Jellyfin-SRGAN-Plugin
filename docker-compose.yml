@@ -35,9 +35,16 @@ services:
               count: 1
               capabilities: [gpu, video]
     volumes:
-      - /mnt/media:/data:rslave
-      - ./cache:/app/cache
-      - ./models:/app/models:ro
+      # Media input paths (add your Jellyfin media directories here)
+      # The container needs access to the same paths Jellyfin uses
+      # Example: If Jellyfin has /media/movies, mount: - /media:/media:ro
+      - /media:/media:ro                    # Common: /media/movies, /media/tv
+      - /mnt/media:/mnt/media:ro            # Common: /mnt/media/movies
+      - /srv/media:/srv/media:ro            # Common: /srv/media
+      # Output and working directories
+      - /mnt/media/upscaled:/data/upscaled  # Upscaled output
+      - ./cache:/app/cache                   # Queue file
+      - ./models:/app/models:ro              # AI models
     environment:
       - NVIDIA_DRIVER_CAPABILITIES=all
       - PYTHONUNBUFFERED=1

@@ -71,7 +71,7 @@ if grep -q "{{Path}}" "${WEBHOOK_CONFIG}"; then
     echo "Restarting Jellyfin to apply changes..."
     sudo systemctl restart jellyfin
     sleep 5
-    
+
     if systemctl is-active --quiet jellyfin; then
         echo -e "${GREEN}✓ Jellyfin restarted successfully${NC}"
     else
