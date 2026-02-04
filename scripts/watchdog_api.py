@@ -185,17 +185,20 @@ def queue_upscaling_job(item):
     
     logger.info(f"✓ Valid input file: {input_file}")
     
-    # Setup output directory
-    output_dir = os.environ.get("UPSCALED_DIR", "./upscaled")
-    os.makedirs(output_dir, exist_ok=True)
+    # Output goes to SAME directory as input (not separate upscaled dir)
+    input_dir = os.path.dirname(input_file)
     
     # Determine output format (MKV or MP4)
     output_format = os.environ.get("OUTPUT_FORMAT", "mkv").lower()
     if output_format not in ["mkv", "mp4"]:
         output_format = "mkv"  # Default to MKV
     
+    # Initial output path (will be intelligently renamed by pipeline)
     basename = os.path.basename(input_file).rsplit(".", 1)[0]
-    output_path = os.path.join(output_dir, f"{basename}.{output_format}")
+    output_path = os.path.join(input_dir, f"{basename}_upscaled.{output_format}")
+    
+    logger.info(f"Output directory: {input_dir} (same as input)")
+    logger.info(f"Note: Filename will be intelligently renamed with resolution/HDR tags")
     
     # Check if already upscaled
     if os.path.exists(output_path):
@@ -361,7 +364,7 @@ def status():
         "jellyfin_api_configured": bool(JELLYFIN_API_KEY),
         "jellyfin_reachable": jellyfin_ok,
         "queue_file": os.environ.get("SRGAN_QUEUE_FILE", "./cache/queue.jsonl"),
-        "upscaled_dir": os.environ.get("UPSCALED_DIR", "./upscaled"),
+        "output_location": "Same directory as input file",
         "mode": "AI upscaling (direct file output)",
         "output_format": os.environ.get("OUTPUT_FORMAT", "mkv")
     }), 200
@@ -398,7 +401,7 @@ if __name__ == "__main__":
     logger.info(f"  Jellyfin URL: {JELLYFIN_URL}")
     logger.info(f"  API Key: {'✓ Set' if JELLYFIN_API_KEY else '✗ NOT SET'}")
     logger.info(f"  Queue file: {os.environ.get('SRGAN_QUEUE_FILE', './cache/queue.jsonl')}")
-    logger.info(f"  Output dir: {os.environ.get('UPSCALED_DIR', './upscaled')}")
+    logger.info(f"  Output location: Same directory as input file")
     logger.info(f"  Mode: AI upscaling (direct file output)")
     logger.info(f"  Output format: {os.environ.get('OUTPUT_FORMAT', 'mkv').upper()}")
     logger.info("")
