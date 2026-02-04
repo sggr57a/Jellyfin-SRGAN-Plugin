@@ -72,11 +72,8 @@ services:
       # Output directory (HLS streams + final files)
       - ./upscaled:/data/upscaled
       
-      # Media input paths (configure for your system)
-      # Uncomment and customize based on where your Jellyfin media is located
-      # - /media:/media:ro
-      # - /mnt/media:/mnt/media:ro
-      # - /srv/media:/srv/media:ro
+      # Media paths (read-write since we save output in same directory as input)
+      - /mnt/media:/mnt/media:rw
     
     # Resource limits
     ulimits:
