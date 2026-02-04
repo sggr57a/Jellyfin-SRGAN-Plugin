@@ -282,7 +282,13 @@ def upscale(input_path: str, output_path: str, width=None, height=None, scale=2.
         encoder_options["color_primaries"] = color_primaries
         encoder_options["color_trc"] = color_trc
 
-    output_container = "mpegts" if output_path.lower().endswith(".ts") else None
+    # Force MKV/MP4 output only (NO TS/HLS)
+    output_ext = os.path.splitext(output_path)[1].lower()
+    if output_ext not in ['.mkv', '.mp4']:
+        raise ValueError(f"Unsupported output format: {output_ext}. Only .mkv and .mp4 are supported.")
+    
+    # Determine container format (None = auto-detect from extension)
+    output_container = None  # Let torchaudio detect from .mkv or .mp4 extension
     writer = torchaudio.io.StreamWriter(output_path, format=output_container)
     writer.add_video_stream(
         frame_rate=fps,
