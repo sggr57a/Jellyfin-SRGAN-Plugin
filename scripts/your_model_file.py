@@ -5,7 +5,44 @@ import threading
 from typing import Optional, Tuple
 
 import torch
-import torchaudio
+
+# Check torchaudio availability and version
+try:
+    import torchaudio
+    if not hasattr(torchaudio, 'io'):
+        print("=" * 80, file=sys.stderr)
+        print("ERROR: torchaudio.io module not available", file=sys.stderr)
+        print("=" * 80, file=sys.stderr)
+        print("", file=sys.stderr)
+        print("Your torchaudio version does not support video I/O.", file=sys.stderr)
+        print("", file=sys.stderr)
+        print("Required: torchaudio >= 2.1.0 with FFmpeg backend", file=sys.stderr)
+        print(f"Current: torchaudio {torchaudio.__version__}", file=sys.stderr)
+        print("", file=sys.stderr)
+        print("To fix:", file=sys.stderr)
+        print("  1. Rebuild Docker container:", file=sys.stderr)
+        print("     docker compose build --no-cache srgan-upscaler", file=sys.stderr)
+        print("     docker compose up -d", file=sys.stderr)
+        print("", file=sys.stderr)
+        print("  2. Verify installation:", file=sys.stderr)
+        print("     docker exec srgan-upscaler python -c \"import torchaudio; print(torchaudio.__version__)\"", file=sys.stderr)
+        print("     docker exec srgan-upscaler python -c \"import torchaudio.io; print('OK')\"", file=sys.stderr)
+        print("", file=sys.stderr)
+        print("=" * 80, file=sys.stderr)
+        raise ImportError("torchaudio.io module not available")
+except ImportError as e:
+    print("=" * 80, file=sys.stderr)
+    print("ERROR: Could not import torchaudio", file=sys.stderr)
+    print("=" * 80, file=sys.stderr)
+    print("", file=sys.stderr)
+    print(f"Error: {e}", file=sys.stderr)
+    print("", file=sys.stderr)
+    print("To fix:", file=sys.stderr)
+    print("  docker compose build --no-cache srgan-upscaler", file=sys.stderr)
+    print("  docker compose up -d", file=sys.stderr)
+    print("", file=sys.stderr)
+    print("=" * 80, file=sys.stderr)
+    raise
 
 
 class _ResidualBlock(torch.nn.Module):
@@ -282,13 +319,38 @@ def upscale(input_path: str, output_path: str, width=None, height=None, scale=2.
         encoder_options["color_primaries"] = color_primaries
         encoder_options["color_trc"] = color_trc
 
-    # Force MKV/MP4 output only (NO TS/HLS)
+    # Force MKV/MP4 output only (NO TS/HLS/MPEGTS)
     output_ext = os.path.splitext(output_path)[1].lower()
     if output_ext not in ['.mkv', '.mp4']:
+        print("=" * 80, file=sys.stderr)
+        print(f"ERROR: Unsupported output format: {output_ext}", file=sys.stderr)
+        print("=" * 80, file=sys.stderr)
+        print("", file=sys.stderr)
+        print("Only MKV and MP4 formats are supported.", file=sys.stderr)
+        print(f"Attempted output: {output_path}", file=sys.stderr)
+        print("", file=sys.stderr)
+        print("Supported formats:", file=sys.stderr)
+        print("  ✓ .mkv (Matroska) - recommended", file=sys.stderr)
+        print("  ✓ .mp4 (MPEG-4)", file=sys.stderr)
+        print("", file=sys.stderr)
+        print("NOT supported:", file=sys.stderr)
+        print("  ✗ .ts (MPEGTS) - removed", file=sys.stderr)
+        print("  ✗ .m3u8 (HLS) - removed", file=sys.stderr)
+        print("", file=sys.stderr)
+        print("=" * 80, file=sys.stderr)
         raise ValueError(f"Unsupported output format: {output_ext}. Only .mkv and .mp4 are supported.")
     
-    # Determine container format (None = auto-detect from extension)
-    output_container = None  # Let torchaudio detect from .mkv or .mp4 extension
+    # Explicitly set container format based on extension
+    if output_ext == '.mkv':
+        output_container = 'matroska'
+    elif output_ext == '.mp4':
+        output_container = 'mp4'
+    else:
+        output_container = None  # Shouldn't reach here due to validation above
+    
+    print(f"Output container format: {output_container} ({output_ext})", file=sys.stderr)
+    print("", file=sys.stderr)
+    
     writer = torchaudio.io.StreamWriter(output_path, format=output_container)
     writer.add_video_stream(
         frame_rate=fps,

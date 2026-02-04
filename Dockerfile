@@ -3,6 +3,11 @@
 #FROM nvcr.io/nvidia/pytorch:24.01-py3
 FROM sggr57a/nvidia-cuda-ffmpeg:1.5
 
+# Verify FFmpeg has required codecs and formats
+RUN ffmpeg -version && \
+    ffmpeg -formats 2>&1 | grep -E "matroska|mp4" && \
+    ffmpeg -codecs 2>&1 | grep -E "hevc|h264"
+
 # Set working directory
 WORKDIR /app
 
