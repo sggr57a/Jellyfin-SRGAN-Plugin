@@ -79,8 +79,100 @@ def _escape_tee_path(path):
     return path
 
 
+def _run_ffmpeg_direct(input_path, output_path, width, height):
+    """
+    Process video with direct output to MKV/MP4 file.
+    Outputs a single high-quality file in the specified container format.
+    """
+    _ensure_parent_dir(output_path)
+    
+    # Determine output format from extension
+    output_ext = os.path.splitext(output_path)[1].lower()
+    if output_ext not in ['.mkv', '.mp4', '.ts']:
+        # Default to MKV if unsupported format
+        output_path = os.path.splitext(output_path)[0] + '.mkv'
+        output_ext = '.mkv'
+    
+    print(f"Output format: {output_ext}", file=sys.stderr)
+    
+    # Video filter
+    if width and height:
+        vf = f"scale={width}:{height}:flags=lanczos"
+    else:
+        # Default to 2x upscale if no dimensions specified
+        scale_factor = float(os.environ.get("SRGAN_SCALE_FACTOR", "2.0"))
+        vf = f"scale=iw*{scale_factor}:ih*{scale_factor}:flags=lanczos"
+    
+    # Hardware acceleration
+    hwaccel = os.environ.get("SRGAN_FFMPEG_HWACCEL", "0") == "1"
+    rtbufsize = os.environ.get("SRGAN_FFMPEG_RTBUFSIZE")
+    encoder = os.environ.get("SRGAN_FFMPEG_ENCODER", "hevc_nvenc")
+    preset_default = "p4" if "nvenc" in encoder else "fast"
+    preset = os.environ.get("SRGAN_FFMPEG_PRESET", preset_default)
+    bufsize = os.environ.get("SRGAN_FFMPEG_BUFSIZE")
+    
+    input_opts = []
+    if hwaccel:
+        input_opts.extend(["-hwaccel", "cuda"])
+    if rtbufsize:
+        input_opts.extend(["-rtbufsize", rtbufsize])
+    
+    # Build command for direct output
+    cmd = [
+        "ffmpeg",
+        "-y",
+        *input_opts,
+        "-i", input_path,
+        "-vf", vf,
+        "-c:v", encoder,
+        "-preset", preset,
+    ]
+    
+    # Use appropriate quality option based on encoder
+    if "nvenc" in encoder.lower():
+        # NVENC encoders use -cq (Constant Quality)
+        cmd.extend(["-cq", "23"])
+    else:
+        # Software encoders use -crf (Constant Rate Factor)
+        cmd.extend(["-crf", "18"])
+    
+    # Audio and subtitle handling
+    cmd.extend([
+        "-c:a", "copy",      # Copy all audio streams
+        "-c:s", "copy",      # Copy all subtitle streams
+    ])
+    
+    if bufsize:
+        cmd.extend(["-bufsize", bufsize])
+    
+    # Map all streams
+    cmd.extend(["-map", "0"])
+    
+    # Set container format
+    if output_ext == '.mp4':
+        cmd.extend(["-movflags", "+faststart"])  # Enable streaming for MP4
+    
+    cmd.append(output_path)
+    
+    print(f"Starting direct file upscale:", file=sys.stderr)
+    print(f"  Input:  {input_path}", file=sys.stderr)
+    print(f"  Output: {output_path}", file=sys.stderr)
+    print(f"  Format: {output_ext.upper()}", file=sys.stderr)
+    print(f"  Video:  {encoder} (quality preset)", file=sys.stderr)
+    print(f"  Audio:  Copy all streams", file=sys.stderr)
+    print(f"  Subs:   Copy all streams", file=sys.stderr)
+    print("", file=sys.stderr)
+    
+    subprocess.check_call(cmd)
+    
+    print(f"✓ Upscaling complete: {output_path}", file=sys.stderr)
+
+
 def _run_ffmpeg_streaming(input_path, output_path, hls_dir, width, height):
     """
+    DEPRECATED: Legacy HLS streaming mode.
+    Use _run_ffmpeg_direct() for better quality and compatibility.
+    
     Process video with dual output for real-time streaming:
     1. HLS stream (.m3u8 + .ts segments) for immediate playback
     2. Final file for permanent storage
@@ -346,13 +438,9 @@ def main():
             )
         
         if not used_model:
-            # Check if streaming mode is enabled
-            if streaming and hls_dir:
-                print(f"Using streaming mode (HLS)", file=sys.stderr)
-                _run_ffmpeg_streaming(input_path, output_path, hls_dir, args.width, args.height)
-            else:
-                print(f"Using batch mode", file=sys.stderr)
-                _run_ffmpeg(input_path, output_path, args.width, args.height)
+            # Use direct file output mode (MKV/MP4)
+            print(f"Using direct file mode (FFmpeg)", file=sys.stderr)
+            _run_ffmpeg_direct(input_path, output_path, args.width, args.height)
 
 
 if __name__ == "__main__":
