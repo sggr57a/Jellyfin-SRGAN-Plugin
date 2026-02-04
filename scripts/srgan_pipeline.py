@@ -353,13 +353,20 @@ def _try_model(input_path, output_path, width, height, scale):
     """
     Try to upscale using AI model with intelligent output naming and verification.
     """
+    # Try FFmpeg-based implementation first (more reliable)
     try:
-        import your_model_file  # type: ignore
-    except Exception as e:
-        print(f"ERROR: Could not import AI model: {e}", file=sys.stderr)
-        return False
+        import your_model_file_ffmpeg as model_module
+        print("Using FFmpeg-based AI upscaling (recommended)", file=sys.stderr)
+    except ImportError:
+        # Fallback to torchaudio.io version
+        try:
+            import your_model_file as model_module
+            print("Using torchaudio.io-based AI upscaling", file=sys.stderr)
+        except Exception as e:
+            print(f"ERROR: Could not import AI model: {e}", file=sys.stderr)
+            return False
 
-    upscale = getattr(your_model_file, "upscale", None)
+    upscale = getattr(model_module, "upscale", None)
     if not callable(upscale):
         print(f"ERROR: Model 'upscale' function not found", file=sys.stderr)
         return False
