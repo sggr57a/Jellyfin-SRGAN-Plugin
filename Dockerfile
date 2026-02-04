@@ -3,6 +3,14 @@
 #FROM nvcr.io/nvidia/pytorch:24.01-py3
 FROM sggr57a/nvidia-cuda-ffmpeg:1.5
 
+# Update and install system dependencies
+RUN apt-get update && apt-get install -y \
+    python3-pip \
+    python3-dev \
+    git \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
 # Verify FFmpeg has required codecs and formats
 RUN ffmpeg -version && \
     ffmpeg -formats 2>&1 | grep -E "matroska|mp4" && \
