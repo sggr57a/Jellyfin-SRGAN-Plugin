@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -10,6 +11,133 @@ def _ensure_parent_dir(path):
     parent = os.path.dirname(os.path.abspath(path))
     if parent and not os.path.exists(parent):
         os.makedirs(parent, exist_ok=True)
+
+
+def _get_video_info(input_path):
+    """
+    Get video information using ffprobe.
+    Returns dict with resolution, HDR info, etc.
+    """
+    try:
+        cmd = [
+            "ffprobe",
+            "-v", "error",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=width,height,color_space,color_transfer,color_primaries",
+            "-of", "json",
+            input_path
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        data = json.loads(result.stdout)
+        
+        if not data.get("streams"):
+            return None
+        
+        stream = data["streams"][0]
+        width = int(stream.get("width", 0))
+        height = int(stream.get("height", 0))
+        
+        # Detect HDR
+        color_transfer = stream.get("color_transfer", "")
+        color_space = stream.get("color_space", "")
+        color_primaries = stream.get("color_primaries", "")
+        
+        is_hdr = (
+            "smpte2084" in color_transfer.lower() or  # HDR10
+            "arib-std-b67" in color_transfer.lower() or  # HLG
+            "bt2020" in color_space.lower() or
+            "bt2020" in color_primaries.lower()
+        )
+        
+        return {
+            "width": width,
+            "height": height,
+            "is_hdr": is_hdr,
+            "color_transfer": color_transfer,
+            "color_space": color_space,
+        }
+    except Exception as e:
+        print(f"Warning: Could not get video info: {e}", file=sys.stderr)
+        return None
+
+
+def _resolution_to_label(height):
+    """Convert resolution height to standard label."""
+    if height >= 2160:
+        return "2160p"  # 4K
+    elif height >= 1440:
+        return "1440p"  # 2K
+    elif height >= 1080:
+        return "1080p"  # Full HD
+    elif height >= 720:
+        return "720p"   # HD
+    elif height >= 576:
+        return "576p"   # SD
+    elif height >= 480:
+        return "480p"   # SD
+    else:
+        return f"{height}p"
+
+
+def _generate_output_filename(input_path, output_dir, target_height, is_hdr=False, output_ext=None):
+    """
+    Generate intelligent output filename with resolution and HDR tags.
+    
+    Examples:
+        Movie (2020) [720p].mkv → Movie (2020) [2160p].mkv
+        Movie (2020) [1080p].mkv → Movie (2020) [2160p] [HDR].mkv
+        Movie (2020).mkv → Movie (2020) [2160p].mkv
+    """
+    basename = os.path.basename(input_path)
+    name_without_ext = os.path.splitext(basename)[0]
+    
+    # Determine output extension
+    if output_ext is None:
+        output_format = os.environ.get("OUTPUT_FORMAT", "mkv").lower()
+        output_ext = f".{output_format}" if not output_format.startswith(".") else output_format
+    
+    # Remove existing resolution tags (480p, 576p, 720p, 1080p, 1440p, 2160p, 4K, etc.)
+    # Handle both standalone tags and compound tags like "Bluray-1080p"
+    resolution_patterns = [
+        r'[-\s]?(480|576|720|1080|1440|2160)[pi]\b',  # Handles "720p" and "Bluray-720p"
+        r'\[?\b4K\b\]?',
+        r'\[?\b2K\b\]?',
+        r'\[?\bHD\b\]?',
+        r'\[?\bFHD\b\]?',
+        r'\[?\bUHD\b\]?',
+        r'\[?\bSD\b\]?',
+    ]
+    
+    for pattern in resolution_patterns:
+        name_without_ext = re.sub(pattern, '', name_without_ext, flags=re.IGNORECASE)
+    
+    # Remove existing HDR tags
+    hdr_patterns = [
+        r'\[?\bHDR10?\b\]?',
+        r'\[?\bHDR\b\]?',
+        r'\[?\bDolby Vision\b\]?',
+        r'\[?\bHLG\b\]?',
+    ]
+    
+    for pattern in hdr_patterns:
+        name_without_ext = re.sub(pattern, '', name_without_ext, flags=re.IGNORECASE)
+    
+    # Clean up multiple spaces and brackets
+    name_without_ext = re.sub(r'\s+', ' ', name_without_ext)
+    name_without_ext = re.sub(r'\[\s*\]', '', name_without_ext)
+    name_without_ext = name_without_ext.strip()
+    
+    # Add new resolution tag
+    new_resolution = _resolution_to_label(target_height)
+    name_without_ext = f"{name_without_ext} [{new_resolution}]"
+    
+    # Add HDR tag if applicable
+    if is_hdr:
+        name_without_ext = f"{name_without_ext} [HDR]"
+    
+    # Generate final output path
+    output_filename = f"{name_without_ext}{output_ext}"
+    return os.path.join(output_dir, output_filename)
 
 
 def _run_ffmpeg(input_path, output_path, width, height):
@@ -83,17 +211,16 @@ def _run_ffmpeg_direct(input_path, output_path, width, height):
     """
     Process video with direct output to MKV/MP4 file.
     Outputs a single high-quality file in the specified container format.
+    Intelligently renames file with resolution and HDR tags.
     """
-    _ensure_parent_dir(output_path)
+    # Get input video information
+    video_info = _get_video_info(input_path)
     
-    # Determine output format from extension
+    # Determine output format from extension or environment
     output_ext = os.path.splitext(output_path)[1].lower()
     if output_ext not in ['.mkv', '.mp4', '.ts']:
-        # Default to MKV if unsupported format
-        output_path = os.path.splitext(output_path)[0] + '.mkv'
-        output_ext = '.mkv'
-    
-    print(f"Output format: {output_ext}", file=sys.stderr)
+        output_format = os.environ.get("OUTPUT_FORMAT", "mkv").lower()
+        output_ext = f".{output_format}" if not output_format.startswith(".") else output_format
     
     # Video filter
     if width and height:
