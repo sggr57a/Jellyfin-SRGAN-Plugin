@@ -39,6 +39,7 @@ services:
       
       # Output Configuration
       - UPSCALED_DIR=/data/upscaled
+      - OUTPUT_FORMAT=mkv
       
       # FFmpeg Configuration
       - SRGAN_FFMPEG_HWACCEL=1
