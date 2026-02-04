@@ -156,7 +156,7 @@ def mark_processed(item_id):
 
 def queue_upscaling_job(item):
     """
-    Queue an upscaling job for the given item.
+    Queue an AI upscaling job for the given item.
     
     Args:
         item: Dict with path, name, item_id, etc.
@@ -166,117 +166,98 @@ def queue_upscaling_job(item):
     """
     input_file = item["path"]
     
+    # CRITICAL: Reject HLS stream inputs
+    input_lower = input_file.lower()
+    if input_lower.endswith('.m3u8') or input_lower.endswith('.m3u') or '/hls/' in input_lower:
+        logger.error(f"REJECTED: HLS stream input not supported: {input_file}")
+        logger.error("Only raw video files (MKV, MP4, AVI, etc.) can be upscaled")
+        return False, {"error": "HLS streams cannot be upscaled. Only raw video files are supported."}
+    
+    # Reject .ts segment files (they're HLS segments, not transport streams)
+    if input_lower.endswith('.ts') and ('/segment' in input_lower or 'hls' in input_lower):
+        logger.error(f"REJECTED: HLS segment file: {input_file}")
+        return False, {"error": "HLS segments cannot be upscaled"}
+    
     # Check if file exists
     if not os.path.exists(input_file):
         logger.error(f"ERROR: Input file does not exist: {input_file}")
         return False, {"error": "File not found on host"}
     
-    logger.info(f"✓ File exists: {input_file}")
+    logger.info(f"✓ Valid input file: {input_file}")
     
-    # Setup output directory and file
-    upscaled_dir = os.environ.get("UPSCALED_DIR", "/mnt/media/upscaled")
-    base_name = os.path.splitext(os.path.basename(input_file))[0]
-    output_file = os.path.join(upscaled_dir, f"{base_name}.ts")
+    # Setup output directory
+    output_dir = os.environ.get("UPSCALED_DIR", "./upscaled")
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Determine output format (MKV or MP4)
+    output_format = os.environ.get("OUTPUT_FORMAT", "mkv").lower()
+    if output_format not in ["mkv", "mp4"]:
+        output_format = "mkv"  # Default to MKV
+    
+    basename = os.path.basename(input_file).rsplit(".", 1)[0]
+    output_path = os.path.join(output_dir, f"{basename}.{output_format}")
     
     # Check if already upscaled
-    if os.path.exists(output_file):
-        logger.info(f"✓ Output file already exists: {output_file}")
+    if os.path.exists(output_path):
+        logger.info(f"✓ Output already exists: {output_path}")
         return True, {
             "status": "ready",
             "message": "File already upscaled",
-            "file": output_file
+            "file": output_path
         }
     
-    # Check if streaming mode is enabled
-    enable_streaming = os.environ.get("ENABLE_HLS_STREAMING", "1") == "1"
+    # Queue the AI upscaling job
+    queue_file = os.environ.get("SRGAN_QUEUE_FILE", "./cache/queue.jsonl")
+    os.makedirs(os.path.dirname(queue_file), exist_ok=True)
     
-    if enable_streaming:
-        # HLS streaming mode
-        hls_dir = os.path.join(upscaled_dir, "hls", base_name)
-        hls_playlist = os.path.join(hls_dir, "stream.m3u8")
-        
-        logger.info(f"Streaming mode enabled")
-        logger.info(f"HLS directory: {hls_dir}")
-        
-        # Create HLS directory
-        os.makedirs(hls_dir, exist_ok=True)
-        
-        # Check if HLS stream already in progress
-        if os.path.exists(hls_playlist):
-            logger.info(f"⚠ HLS stream already in progress: {hls_playlist}")
-            
-            hls_server_host = os.environ.get("HLS_SERVER_HOST", "localhost")
-            hls_server_port = os.environ.get("HLS_SERVER_PORT", "8080")
-            hls_url = f"http://{hls_server_host}:{hls_server_port}/hls/{base_name}/stream.m3u8"
-            
-            return True, {
-                "status": "streaming",
-                "message": "Upscaling already in progress",
-                "hls_url": hls_url
-            }
-        
-        # Add to queue
-        queue_file = os.environ.get("SRGAN_QUEUE_FILE", "./cache/queue.jsonl")
-        os.makedirs(os.path.dirname(queue_file), exist_ok=True)
-        
-        payload = json.dumps({
-            "input": input_file,
-            "output": output_file,
-            "hls_dir": hls_dir,
-            "streaming": True,
-            "item_id": item.get("item_id"),
-            "item_name": item.get("name"),
-            "user": item.get("user")
-        })
-        
-        with open(queue_file, "a", encoding="utf-8") as handle:
-            handle.write(f"{payload}\n")
-        
-        logger.info(f"✓ Streaming job added to queue")
-        logger.info(f"  Input:      {input_file}")
-        logger.info(f"  Output:     {output_file}")
-        logger.info(f"  HLS dir:    {hls_dir}")
-        logger.info(f"  Item:       {item.get('name')}")
-        logger.info(f"  User:       {item.get('user')}")
-        
-        # Start the upscaler container
-        logger.info("Starting srgan-upscaler container...")
-        try:
-            result = subprocess.run(
-                ["docker", "compose", "up", "-d", "srgan-upscaler"],
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
-            
-            if result.returncode != 0:
-                logger.error(f"Docker compose error: {result.stderr}")
-                return False, {"error": f"Docker error: {result.stderr}"}
-            
-            logger.info("✓ Docker compose command successful")
-        except subprocess.TimeoutExpired:
-            logger.error("Docker compose command timed out")
-        except FileNotFoundError:
-            logger.error("ERROR: 'docker' command not found")
-            return False, {"error": "Docker not found"}
-        
-        # Get HLS URL
-        hls_server_host = os.environ.get("HLS_SERVER_HOST", "localhost")
-        hls_server_port = os.environ.get("HLS_SERVER_PORT", "8080")
-        hls_url = f"http://{hls_server_host}:{hls_server_port}/hls/{base_name}/stream.m3u8"
-        
-        return True, {
-            "status": "queued",
-            "message": "Upscaling job queued successfully",
-            "hls_url": hls_url,
-            "input": input_file,
-            "output": output_file,
-            "hls_dir": hls_dir
-        }
+    job = {
+        "input": input_file,
+        "output": output_path,
+        "streaming": False,  # Direct file output only
+        "item_id": item.get("item_id"),
+        "item_name": item.get("name"),
+        "user": item.get("user")
+    }
     
-    # Batch mode (non-streaming)
-    logger.error("Batch mode not yet implemented in API version")
-    return False, {"error": "Batch mode not implemented"}
+    with open(queue_file, "a", encoding="utf-8") as handle:
+        handle.write(f"{json.dumps(job)}\n")
+    
+    logger.info(f"✓ AI upscaling job queued")
+    logger.info(f"  Input:  {input_file}")
+    logger.info(f"  Output: {output_path}")
+    logger.info(f"  Format: {output_format.upper()}")
+    logger.info(f"  Item:   {item.get('name')}")
+    logger.info(f"  User:   {item.get('user')}")
+    
+    # Start the upscaler container
+    logger.info("Starting srgan-upscaler container...")
+    try:
+        result = subprocess.run(
+            ["docker", "compose", "up", "-d", "srgan-upscaler"],
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        
+        if result.returncode != 0:
+            logger.error(f"Docker compose error: {result.stderr}")
+            return False, {"error": f"Docker error: {result.stderr}"}
+        
+        logger.info("✓ Container started successfully")
+    except subprocess.TimeoutExpired:
+        logger.error("Docker compose command timed out")
+        return False, {"error": "Docker timeout"}
+    except FileNotFoundError:
+        logger.error("ERROR: 'docker' command not found")
+        return False, {"error": "Docker not found"}
+    
+    return True, {
+        "status": "queued",
+        "message": "AI upscaling job queued successfully",
+        "input": input_file,
+        "output": output_path,
+        "format": output_format
+    }
 
 
 @app.route("/upscale-trigger", methods=["POST"])
@@ -380,8 +361,9 @@ def status():
         "jellyfin_api_configured": bool(JELLYFIN_API_KEY),
         "jellyfin_reachable": jellyfin_ok,
         "queue_file": os.environ.get("SRGAN_QUEUE_FILE", "./cache/queue.jsonl"),
-        "upscaled_dir": os.environ.get("UPSCALED_DIR", "/mnt/media/upscaled"),
-        "streaming_enabled": os.environ.get("ENABLE_HLS_STREAMING", "1") == "1"
+        "upscaled_dir": os.environ.get("UPSCALED_DIR", "./upscaled"),
+        "mode": "AI upscaling (direct file output)",
+        "output_format": os.environ.get("OUTPUT_FORMAT", "mkv")
     }), 200
 
 
@@ -416,8 +398,9 @@ if __name__ == "__main__":
     logger.info(f"  Jellyfin URL: {JELLYFIN_URL}")
     logger.info(f"  API Key: {'✓ Set' if JELLYFIN_API_KEY else '✗ NOT SET'}")
     logger.info(f"  Queue file: {os.environ.get('SRGAN_QUEUE_FILE', './cache/queue.jsonl')}")
-    logger.info(f"  Output dir: {os.environ.get('UPSCALED_DIR', '/mnt/media/upscaled')}")
-    logger.info(f"  HLS streaming: {'Enabled' if os.environ.get('ENABLE_HLS_STREAMING', '1') == '1' else 'Disabled'}")
+    logger.info(f"  Output dir: {os.environ.get('UPSCALED_DIR', './upscaled')}")
+    logger.info(f"  Mode: AI upscaling (direct file output)")
+    logger.info(f"  Output format: {os.environ.get('OUTPUT_FORMAT', 'mkv').upper()}")
     logger.info("")
     
     if not JELLYFIN_API_KEY:

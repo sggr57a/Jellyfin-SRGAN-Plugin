@@ -141,6 +141,11 @@ def _generate_output_filename(input_path, output_dir, target_height, is_hdr=Fals
 
 
 def _run_ffmpeg(input_path, output_path, width, height):
+    """
+    DEPRECATED: Legacy FFmpeg-only upscaling (no AI).
+    This function is kept for debugging purposes only.
+    Normal operation uses AI upscaling via _try_model().
+    """
     _ensure_parent_dir(output_path)
     if width and height:
         vf = f"scale={width}:{height}:flags=lanczos"
@@ -209,6 +214,10 @@ def _escape_tee_path(path):
 
 def _run_ffmpeg_direct(input_path, output_path, width, height):
     """
+    DEPRECATED: Legacy FFmpeg-only direct output (no AI).
+    This function is kept for debugging purposes only.
+    Normal operation uses AI upscaling via _try_model().
+    
     Process video with direct output to MKV/MP4 file.
     Outputs a single high-quality file in the specified container format.
     Intelligently renames file with resolution and HDR tags.
@@ -417,25 +426,74 @@ def _finalize_hls_playlist(hls_playlist):
 
 
 def _try_model(input_path, output_path, width, height, scale):
+    """
+    Try to upscale using AI model with intelligent output naming.
+    """
     try:
         import your_model_file  # type: ignore
-    except Exception:
+    except Exception as e:
+        print(f"ERROR: Could not import AI model: {e}", file=sys.stderr)
         return False
 
     upscale = getattr(your_model_file, "upscale", None)
     if not callable(upscale):
+        print(f"ERROR: Model 'upscale' function not found", file=sys.stderr)
         return False
 
     try:
+        # Get input video information for intelligent naming
+        video_info = _get_video_info(input_path)
+        
+        # Calculate target resolution
+        if width and height:
+            target_height = height
+        else:
+            scale_factor = float(os.environ.get("SRGAN_SCALE_FACTOR", "2.0"))
+            if video_info and video_info.get("height"):
+                target_height = int(video_info["height"] * scale_factor)
+            else:
+                target_height = 2160  # Default assume 4K output
+        
+        # Generate intelligent output filename with resolution and HDR tags
+        output_dir = os.path.dirname(output_path)
+        output_ext = os.path.splitext(output_path)[1]
+        is_hdr = video_info.get("is_hdr", False) if video_info else False
+        
+        # Generate new filename
+        intelligent_output_path = _generate_output_filename(
+            input_path, 
+            output_dir, 
+            target_height, 
+            is_hdr,
+            output_ext
+        )
+        
+        # Log the intelligent naming
+        print(f"Intelligent filename generation:", file=sys.stderr)
+        print(f"  Input resolution: {video_info.get('height') if video_info else 'unknown'}p", file=sys.stderr)
+        print(f"  Output resolution: {target_height}p", file=sys.stderr)
+        print(f"  HDR detected: {'Yes' if is_hdr else 'No'}", file=sys.stderr)
+        print(f"  Output file: {os.path.basename(intelligent_output_path)}", file=sys.stderr)
+        print("", file=sys.stderr)
+        
+        _ensure_parent_dir(intelligent_output_path)
+        
+        # Run AI upscaling
         upscale(
             input_path=input_path,
-            output_path=output_path,
+            output_path=intelligent_output_path,
             width=width,
             height=height,
             scale=scale,
         )
         return True
-    except NotImplementedError:
+    except NotImplementedError as e:
+        print(f"ERROR: Model not implemented: {e}", file=sys.stderr)
+        return False
+    except Exception as e:
+        print(f"ERROR: AI upscaling failed: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
         return False
 
 
@@ -552,22 +610,70 @@ def main():
         # Unpack job with streaming metadata
         input_path, output_path, hls_dir, streaming = job
         
-        if not os.path.exists(input_path):
-            print(f"Input file does not exist: {input_path}", file=sys.stderr)
+        # CRITICAL: Validate input is not HLS stream
+        input_lower = input_path.lower()
+        if input_lower.endswith('.m3u8') or input_lower.endswith('.m3u') or '/hls/' in input_lower:
+            print(f"ERROR: HLS stream inputs are not supported: {input_path}", file=sys.stderr)
+            print(f"Only raw video files (MKV, MP4, AVI, etc.) can be upscaled", file=sys.stderr)
             continue
-
-        enable_model = os.environ.get("SRGAN_ENABLE", "0") == "1"
-        used_model = False
         
-        if enable_model:
-            used_model = _try_model(
-                input_path, output_path, args.width, args.height, args.scale
-            )
+        # Reject HLS segment files
+        if input_lower.endswith('.ts') and ('/segment' in input_lower or 'hls' in input_lower):
+            print(f"ERROR: HLS segment files cannot be upscaled: {input_path}", file=sys.stderr)
+            continue
+        
+        if not os.path.exists(input_path):
+            print(f"ERROR: Input file does not exist: {input_path}", file=sys.stderr)
+            continue
+        
+        print("=" * 80, file=sys.stderr)
+        print(f"AI Upscaling Job", file=sys.stderr)
+        print("=" * 80, file=sys.stderr)
+        print(f"Input:  {input_path}", file=sys.stderr)
+        print(f"Output: {output_path}", file=sys.stderr)
+        print("", file=sys.stderr)
+
+        # AI model upscaling is MANDATORY
+        enable_model = os.environ.get("SRGAN_ENABLE", "1") == "1"  # Default to enabled
+        
+        if not enable_model:
+            print("ERROR: AI upscaling is disabled (SRGAN_ENABLE=0)", file=sys.stderr)
+            print("AI upscaling must be enabled. Set SRGAN_ENABLE=1", file=sys.stderr)
+            print("FFmpeg-only upscaling is not supported in this mode.", file=sys.stderr)
+            continue
+        
+        # Try AI model upscaling
+        print("Starting AI upscaling with SRGAN model...", file=sys.stderr)
+        used_model = _try_model(
+            input_path, output_path, args.width, args.height, args.scale
+        )
         
         if not used_model:
-            # Use direct file output mode (MKV/MP4)
-            print(f"Using direct file mode (FFmpeg)", file=sys.stderr)
-            _run_ffmpeg_direct(input_path, output_path, args.width, args.height)
+            print("", file=sys.stderr)
+            print("=" * 80, file=sys.stderr)
+            print("ERROR: AI model upscaling failed!", file=sys.stderr)
+            print("=" * 80, file=sys.stderr)
+            print("Possible reasons:", file=sys.stderr)
+            print("  1. Model file not found (check SRGAN_MODEL_PATH)", file=sys.stderr)
+            print("  2. Model file is corrupted", file=sys.stderr)
+            print("  3. GPU memory exhausted", file=sys.stderr)
+            print("  4. CUDA/PyTorch error", file=sys.stderr)
+            print("", file=sys.stderr)
+            print("Check logs above for specific error messages.", file=sys.stderr)
+            print("", file=sys.stderr)
+            print("To debug:", file=sys.stderr)
+            print("  docker logs srgan-upscaler", file=sys.stderr)
+            print("  docker exec srgan-upscaler ls -lh /app/models/", file=sys.stderr)
+            print("  docker exec srgan-upscaler nvidia-smi", file=sys.stderr)
+            print("=" * 80, file=sys.stderr)
+            continue
+        
+        print("", file=sys.stderr)
+        print("=" * 80, file=sys.stderr)
+        print("✓ AI upscaling completed successfully!", file=sys.stderr)
+        print(f"✓ Output saved to: {output_path}", file=sys.stderr)
+        print("=" * 80, file=sys.stderr)
+        print("", file=sys.stderr)
 
 
 if __name__ == "__main__":
