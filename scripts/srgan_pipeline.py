@@ -165,21 +165,10 @@ def _escape_tee_path(path):
 def _run_ffmpeg_direct(input_path, output_path, width, height):
     """
     DEPRECATED: Legacy FFmpeg-only direct output (no AI).
-    This function is kept for debugging purposes only.
+    This function is NO LONGER USED and will be removed.
     Normal operation uses AI upscaling via _try_model().
-    
-    Process video with direct output to MKV/MP4 file.
-    Outputs a single high-quality file in the specified container format.
-    Intelligently renames file with resolution and HDR tags.
     """
-    # Get input video information
-    video_info = _get_video_info(input_path)
-    
-    # Determine output format from extension or environment
-    output_ext = os.path.splitext(output_path)[1].lower()
-    if output_ext not in ['.mkv', '.mp4', '.ts']:
-        output_format = os.environ.get("OUTPUT_FORMAT", "mkv").lower()
-        output_ext = f".{output_format}" if not output_format.startswith(".") else output_format
+    raise NotImplementedError("FFmpeg-only upscaling is no longer supported. Use AI upscaling (SRGAN_ENABLE=1).")
     
     # Video filter
     if width and height:
