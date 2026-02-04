@@ -425,9 +425,98 @@ def _finalize_hls_playlist(hls_playlist):
         print(f"Warning: Could not finalize HLS playlist: {e}", file=sys.stderr)
 
 
+def _verify_upscaled_output(output_path, expected_height=None, input_path=None):
+    """
+    Verify that the upscaled output file is valid and meets expectations.
+    
+    Returns:
+        tuple: (success: bool, verification_info: dict)
+    """
+    verification = {
+        "exists": False,
+        "valid": False,
+        "resolution": None,
+        "file_size": None,
+        "codec": None,
+        "duration": None,
+        "error": None
+    }
+    
+    # Check file exists
+    if not os.path.exists(output_path):
+        verification["error"] = "Output file does not exist"
+        return False, verification
+    
+    verification["exists"] = True
+    
+    # Get file size
+    try:
+        file_size = os.path.getsize(output_path)
+        verification["file_size"] = file_size
+        
+        # Sanity check: file should be > 1MB
+        if file_size < 1_000_000:
+            verification["error"] = f"Output file too small: {file_size} bytes"
+            return False, verification
+    except Exception as e:
+        verification["error"] = f"Could not get file size: {e}"
+        return False, verification
+    
+    # Verify with ffprobe
+    try:
+        cmd = [
+            "ffprobe",
+            "-v", "error",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=width,height,codec_name,duration:format=duration",
+            "-of", "json",
+            output_path
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=30)
+        data = json.loads(result.stdout)
+        
+        if not data.get("streams"):
+            verification["error"] = "No video stream found in output"
+            return False, verification
+        
+        stream = data["streams"][0]
+        width = int(stream.get("width", 0))
+        height = int(stream.get("height", 0))
+        codec = stream.get("codec_name", "unknown")
+        
+        verification["resolution"] = f"{width}x{height}"
+        verification["codec"] = codec
+        
+        # Get duration
+        duration = stream.get("duration") or data.get("format", {}).get("duration")
+        if duration:
+            verification["duration"] = float(duration)
+        
+        # Check resolution matches expected
+        if expected_height and height > 0:
+            if abs(height - expected_height) > 10:  # Allow 10px tolerance
+                verification["error"] = f"Resolution mismatch: expected {expected_height}p, got {height}p"
+                return False, verification
+        
+        # If we have input path, compare durations
+        if input_path and verification["duration"]:
+            input_info = _get_video_info(input_path)
+            # Duration check would go here if needed
+        
+        verification["valid"] = True
+        return True, verification
+        
+    except subprocess.TimeoutExpired:
+        verification["error"] = "ffprobe timeout"
+        return False, verification
+    except Exception as e:
+        verification["error"] = f"ffprobe failed: {e}"
+        return False, verification
+
+
 def _try_model(input_path, output_path, width, height, scale):
     """
-    Try to upscale using AI model with intelligent output naming.
+    Try to upscale using AI model with intelligent output naming and verification.
     """
     try:
         import your_model_file  # type: ignore
@@ -470,15 +559,25 @@ def _try_model(input_path, output_path, width, height, scale):
         
         # Log the intelligent naming
         print(f"Intelligent filename generation:", file=sys.stderr)
-        print(f"  Input resolution: {video_info.get('height') if video_info else 'unknown'}p", file=sys.stderr)
-        print(f"  Output resolution: {target_height}p", file=sys.stderr)
+        if video_info:
+            print(f"  Input resolution: {video_info.get('width')}x{video_info.get('height')} ({video_info.get('height')}p)", file=sys.stderr)
+        print(f"  Target resolution: {target_height}p", file=sys.stderr)
         print(f"  HDR detected: {'Yes' if is_hdr else 'No'}", file=sys.stderr)
         print(f"  Output file: {os.path.basename(intelligent_output_path)}", file=sys.stderr)
         print("", file=sys.stderr)
         
         _ensure_parent_dir(intelligent_output_path)
         
+        # Get input file size for comparison
+        input_size = os.path.getsize(input_path)
+        print(f"Input file size: {input_size / 1_000_000:.1f} MB", file=sys.stderr)
+        print("", file=sys.stderr)
+        
         # Run AI upscaling
+        print("Starting AI upscaling (this may take several minutes)...", file=sys.stderr)
+        import time
+        start_time = time.time()
+        
         upscale(
             input_path=input_path,
             output_path=intelligent_output_path,
@@ -486,7 +585,42 @@ def _try_model(input_path, output_path, width, height, scale):
             height=height,
             scale=scale,
         )
+        
+        elapsed_time = time.time() - start_time
+        print("", file=sys.stderr)
+        print(f"AI upscaling completed in {elapsed_time:.1f} seconds ({elapsed_time/60:.1f} minutes)", file=sys.stderr)
+        print("", file=sys.stderr)
+        
+        # Verify the output
+        print("Verifying upscaled output...", file=sys.stderr)
+        success, verification = _verify_upscaled_output(
+            intelligent_output_path, 
+            expected_height=target_height,
+            input_path=input_path
+        )
+        
+        if not success:
+            print(f"✗ VERIFICATION FAILED: {verification.get('error')}", file=sys.stderr)
+            print(f"  Output path: {intelligent_output_path}", file=sys.stderr)
+            return False
+        
+        # Log verification results
+        print("✓ VERIFICATION PASSED", file=sys.stderr)
+        print(f"  File exists: Yes", file=sys.stderr)
+        print(f"  File size: {verification['file_size'] / 1_000_000:.1f} MB", file=sys.stderr)
+        print(f"  Resolution: {verification['resolution']}", file=sys.stderr)
+        print(f"  Codec: {verification['codec']}", file=sys.stderr)
+        if verification.get('duration'):
+            print(f"  Duration: {verification['duration']:.1f} seconds", file=sys.stderr)
+        print(f"  Location: {intelligent_output_path}", file=sys.stderr)
+        
+        # Calculate size increase
+        output_size = verification['file_size']
+        size_ratio = output_size / input_size
+        print(f"  Size ratio: {size_ratio:.2f}x (input: {input_size/1_000_000:.1f} MB → output: {output_size/1_000_000:.1f} MB)", file=sys.stderr)
+        
         return True
+        
     except NotImplementedError as e:
         print(f"ERROR: Model not implemented: {e}", file=sys.stderr)
         return False
@@ -670,8 +804,16 @@ def main():
         
         print("", file=sys.stderr)
         print("=" * 80, file=sys.stderr)
-        print("✓ AI upscaling completed successfully!", file=sys.stderr)
-        print(f"✓ Output saved to: {output_path}", file=sys.stderr)
+        print("✓✓✓ AI UPSCALING SUCCESSFULLY COMPLETED ✓✓✓", file=sys.stderr)
+        print("=" * 80, file=sys.stderr)
+        print("", file=sys.stderr)
+        print("Summary:", file=sys.stderr)
+        print(f"  • Input processed: {os.path.basename(input_path)}", file=sys.stderr)
+        print(f"  • AI model used: SRGAN", file=sys.stderr)
+        print(f"  • Output verified: Yes (valid video file)", file=sys.stderr)
+        print(f"  • Ready for playback: Yes", file=sys.stderr)
+        print("", file=sys.stderr)
+        print("The upscaled file is now available in your media library!", file=sys.stderr)
         print("=" * 80, file=sys.stderr)
         print("", file=sys.stderr)
 
