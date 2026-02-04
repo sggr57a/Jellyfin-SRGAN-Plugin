@@ -64,7 +64,20 @@ RUN distribution=$(. /etc/os-release; echo "$ID/$VERSION_ID") \
 # Set Python as default
 RUN update-alternatives --install /usr/bin/python python /usr/bin/python3 1
 
-# Copy requirements and install Python dependencies
+# Install PyTorch packages FIRST from official PyTorch index
+# CRITICAL: Must use PyTorch index, not PyPI, to get torchaudio.io module
+RUN pip3 install --no-cache-dir \
+    torch==2.4.0 \
+    torchvision==0.19.0 \
+    torchaudio==2.4.0 \
+    --index-url https://download.pytorch.org/whl/cu121
+
+# Verify torchaudio.io is available (fail build if not)
+RUN python3 -c "import torchaudio; print(f'torchaudio version: {torchaudio.__version__}')" && \
+    python3 -c "import torchaudio.io; print('✓ torchaudio.io available')" || \
+    (echo "ERROR: torchaudio.io not available - PyTorch installation failed" && exit 1)
+
+# Copy requirements and install other Python dependencies
 COPY requirements.txt /app/
 RUN pip3 install --no-cache-dir -r requirements.txt
 
