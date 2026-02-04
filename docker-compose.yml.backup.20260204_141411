@@ -101,13 +101,6 @@ services:
       
       # Output directory (HLS streams + final files)
       
-      # Media input paths (auto-detected)
-      # Queue file (shared with watchdog)
-      
-      # AI models
-      
-      # Output directory (HLS streams + final files)
-      
       # Media paths (read-write since we save output in same directory as input)
     
     # Resource limits

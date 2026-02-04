@@ -39,7 +39,6 @@ services:
       
       # Output Configuration
       - UPSCALED_DIR=/data/upscaled
-      - OUTPUT_FORMAT=mkv
       
       # FFmpeg Configuration
       - SRGAN_FFMPEG_HWACCEL=1
@@ -87,28 +86,11 @@ services:
       
       # Output directory (HLS streams + final files)
       
-      # Media input paths (auto-detected)
-      # Queue file (shared with watchdog)
-      
-      # AI models
-      
-      # Output directory (HLS streams + final files)
-      
-      # Media input paths (auto-detected)
-      # Queue file (shared with watchdog)
-      
-      # AI models
-      
-      # Output directory (HLS streams + final files)
-      
-      # Media input paths (auto-detected)
-      # Queue file (shared with watchdog)
-      
-      # AI models
-      
-      # Output directory (HLS streams + final files)
-      
-      # Media paths (read-write since we save output in same directory as input)
+      # Media input paths (configure for your system)
+      # Uncomment and customize based on where your Jellyfin media is located
+      # - /media:/media:ro
+      # - /mnt/media:/mnt/media:ro
+      # - /srv/media:/srv/media:ro
     
     # Resource limits
     ulimits:
