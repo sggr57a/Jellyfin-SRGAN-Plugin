@@ -63,52 +63,10 @@ services:
     
     # Volume mounts
     volumes:
-      # Queue file (shared with watchdog)
       - ./cache:/app/cache
-      
-      # AI models
-      - ./models:/app/models:ro
-      
-      # Output directory (HLS streams + final files)
+      - ./models:/app/models
       - ./upscaled:/data/upscaled
-      
-      # Media input paths (auto-detected)
-      - /mnt/media:/mnt/media:ro
-      # Queue file (shared with watchdog)
-      
-      # AI models
-      
-      # Output directory (HLS streams + final files)
-      
-      # Media input paths (auto-detected)
-      # Queue file (shared with watchdog)
-      
-      # AI models
-      
-      # Output directory (HLS streams + final files)
-      
-      # Media input paths (auto-detected)
-      # Queue file (shared with watchdog)
-      
-      # AI models
-      
-      # Output directory (HLS streams + final files)
-      
-      # Media input paths (auto-detected)
-      # Queue file (shared with watchdog)
-      
-      # AI models
-      
-      # Output directory (HLS streams + final files)
-      
-      # Media input paths (auto-detected)
-      # Queue file (shared with watchdog)
-      
-      # AI models
-      
-      # Output directory (HLS streams + final files)
-      
-      # Media paths (read-write since we save output in same directory as input)
+      - /mnt/media:/mnt/media
     
     # Resource limits
     ulimits:
@@ -127,8 +85,8 @@ services:
       - "8080:80"
     
     volumes:
-      - ./upscaled/hls:/usr/share/nginx/html/hls:ro
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./upscaled/hls:/usr/share/nginx/html/hls
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
     
     networks:
       - srgan-network
