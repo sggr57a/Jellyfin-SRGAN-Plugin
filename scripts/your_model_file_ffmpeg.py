@@ -242,21 +242,30 @@ def upscale(input_path: str, output_path: str, width=None, height=None, scale=2.
     ])
     
     # Process video frame by frame
-    input_proc = subprocess.Popen(ffmpeg_input, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-    output_proc = subprocess.Popen(ffmpeg_output, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+    input_proc = subprocess.Popen(ffmpeg_input, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    output_proc = subprocess.Popen(ffmpeg_output, stdin=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=10**8)
     
     frame_size = src_width * src_height * 3  # RGB24
     frame_count = 0
     
     try:
         while True:
+            # Check if output process has died
+            if output_proc.poll() is not None:
+                stderr_output = output_proc.stderr.read().decode('utf-8', errors='replace')
+                raise RuntimeError(f"FFmpeg encoder died unexpectedly:\n{stderr_output}")
+            
             # Read frame
             frame_data = input_proc.stdout.read(frame_size)
             if len(frame_data) != frame_size:
-                break  # End of video
+                if len(frame_data) == 0:
+                    break  # End of video
+                else:
+                    print(f"Warning: Incomplete frame data ({len(frame_data)} bytes), skipping", file=sys.stderr)
+                    break
             
-            # Convert to tensor
-            frame = np.frombuffer(frame_data, dtype=np.uint8).reshape(src_height, src_width, 3)
+            # Convert to tensor (copy to make writable)
+            frame = np.frombuffer(frame_data, dtype=np.uint8).reshape(src_height, src_width, 3).copy()
             frame_tensor = torch.from_numpy(frame).permute(2, 0, 1).unsqueeze(0).float() / 255.0
             frame_tensor = frame_tensor.to(device)
             
@@ -284,7 +293,11 @@ def upscale(input_path: str, output_path: str, width=None, height=None, scale=2.
             upscaled = upscaled.squeeze(0).permute(1, 2, 0).cpu().numpy()
             
             # Write frame
-            output_proc.stdin.write(upscaled.tobytes())
+            try:
+                output_proc.stdin.write(upscaled.tobytes())
+            except BrokenPipeError:
+                stderr_output = output_proc.stderr.read().decode('utf-8', errors='replace')
+                raise RuntimeError(f"FFmpeg encoder pipe broken:\n{stderr_output}")
             
             frame_count += 1
             if frame_count % 30 == 0:
@@ -293,11 +306,36 @@ def upscale(input_path: str, output_path: str, width=None, height=None, scale=2.
         print("", file=sys.stderr)
         print(f"✓ Processed {frame_count} frames total", file=sys.stderr)
         
+    except Exception as e:
+        # Clean up processes on error
+        try:
+            input_proc.kill()
+        except:
+            pass
+        try:
+            output_proc.kill()
+        except:
+            pass
+        raise
     finally:
-        input_proc.stdout.close()
+        # Normal cleanup
+        try:
+            input_proc.stdout.close()
+        except:
+            pass
         input_proc.wait()
-        output_proc.stdin.close()
+        
+        try:
+            output_proc.stdin.close()
+        except:
+            pass
         output_proc.wait()
+        
+        # Check for FFmpeg errors
+        if output_proc.returncode != 0:
+            stderr_output = output_proc.stderr.read().decode('utf-8', errors='replace')
+            print(f"FFmpeg encoder error (exit code {output_proc.returncode}):", file=sys.stderr)
+            print(stderr_output, file=sys.stderr)
     
     print("✓ AI upscaling complete", file=sys.stderr)
     print("=" * 80, file=sys.stderr)
