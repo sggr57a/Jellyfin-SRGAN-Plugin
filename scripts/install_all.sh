@@ -98,8 +98,6 @@ fi
 if ! docker compose version >/dev/null 2>&1; then
     echo -e "${RED}✗ Docker Compose v2 required${NC}"
     apt update ; apt install -y docker-compose-v2
-    echo "Install from: https://docs.docker.com/compose/install/"
-    exit 1
 else
     echo -e "${GREEN}✓ Docker Compose v2 installed${NC}"
 fi
