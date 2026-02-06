@@ -173,10 +173,19 @@ def queue_upscaling_job(item):
         logger.error("Only raw video files (MKV, MP4, AVI, etc.) can be upscaled")
         return False, {"error": "HLS streams cannot be upscaled. Only raw video files are supported."}
     
-    # Reject .ts segment files (they're HLS segments, not transport streams)
-    if input_lower.endswith('.ts') and ('/segment' in input_lower or 'hls' in input_lower):
-        logger.error(f"REJECTED: HLS segment file: {input_file}")
-        return False, {"error": "HLS segments cannot be upscaled"}
+    # Reject HLS segment files (more specific check)
+    # HLS segments have patterns like segment_NNN.ts, seg_NNN.ts, or are in /hls/ directories
+    if input_lower.endswith('.ts'):
+        basename = os.path.basename(input_lower)
+        normalized_path = input_lower.replace('\\', '/')
+        # Check if it's actually an HLS segment (not just any .ts file)
+        if ('segment_' in basename or 
+            'seg_' in basename or 
+            'chunk_' in basename or
+            '/hls/' in normalized_path or
+            '/segments/' in normalized_path):
+            logger.error(f"REJECTED: HLS segment file: {input_file}")
+            return False, {"error": "HLS segments cannot be upscaled"}
     
     # Check if file exists
     if not os.path.exists(input_file):

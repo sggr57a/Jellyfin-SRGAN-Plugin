@@ -593,10 +593,19 @@ def main():
             print(f"Only raw video files (MKV, MP4, AVI, etc.) can be upscaled", file=sys.stderr)
             continue
         
-        # Reject HLS segment files
-        if input_lower.endswith('.ts') and ('/segment' in input_lower or 'hls' in input_lower):
-            print(f"ERROR: HLS segment files cannot be upscaled: {input_path}", file=sys.stderr)
-            continue
+        # Reject HLS segment files (more specific check)
+        # HLS segments have patterns like segment_NNN.ts, seg_NNN.ts, or are in /hls/ directories
+        if input_lower.endswith('.ts'):
+            basename = os.path.basename(input_lower)
+            normalized_path = input_lower.replace('\\', '/')
+            # Check if it's actually an HLS segment (not just any .ts file)
+            if ('segment_' in basename or 
+                'seg_' in basename or 
+                'chunk_' in basename or
+                '/hls/' in normalized_path or
+                '/segments/' in normalized_path):
+                print(f"ERROR: HLS segment files cannot be upscaled: {input_path}", file=sys.stderr)
+                continue
         
         if not os.path.exists(input_path):
             print(f"ERROR: Input file does not exist: {input_path}", file=sys.stderr)
