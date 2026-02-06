@@ -80,7 +80,7 @@ if ! check_command docker; then
     echo "Installing Docker..."
     if [[ "${OS_ID}" == "ubuntu" ]] || [[ "${OS_ID}" == "debian" ]]; then
         curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
-        sudo sh /tmp/get-docker.sh
+        sudo sh /tmp/get-docker.sh && apt install -y docker-compose-v2
         sudo usermod -aG docker "${SUDO_USER:-${USER}}"
         rm /tmp/get-docker.sh
         echo -e "${GREEN}✓ Docker installed${NC}"
