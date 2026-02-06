@@ -107,7 +107,7 @@ echo ""
 # 8. Check queue file
 echo "8. Job Queue"
 echo "------------"
-if docker exec srgan-upscaler test -f /app/cache/queue.jsonl; then
+if docker exec srgan-upscaler test -f /app/cache/queue.jsonl 2>/dev/null; then
     LINES=$(docker exec srgan-upscaler wc -l < /app/cache/queue.jsonl 2>/dev/null || echo "0")
     echo "✓ Queue file exists"
     echo "  Pending jobs: $LINES"
