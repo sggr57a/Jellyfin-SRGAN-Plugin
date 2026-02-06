@@ -80,7 +80,7 @@ if ! check_command docker; then
     echo "Installing Docker..."
     if [[ "${OS_ID}" == "ubuntu" ]] || [[ "${OS_ID}" == "debian" ]]; then
         curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
-        sudo sh /tmp/get-docker.sh && apt install -y docker-compose-v2
+        sudo sh /tmp/get-docker.sh
         sudo usermod -aG docker "${SUDO_USER:-${USER}}"
         rm /tmp/get-docker.sh
         echo -e "${GREEN}✓ Docker installed${NC}"
@@ -97,6 +97,7 @@ fi
 # Docker Compose v2
 if ! docker compose version >/dev/null 2>&1; then
     echo -e "${RED}✗ Docker Compose v2 required${NC}"
+    apt update ; apt install -y docker-compose-v2
     echo "Install from: https://docs.docker.com/compose/install/"
     exit 1
 else
