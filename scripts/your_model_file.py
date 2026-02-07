@@ -1,3 +1,9 @@
+#!/usr/bin/env python3
+"""
+SRGAN AI Upscaling using torchaudio.io for video I/O
+Fallback implementation if FFmpeg-based version is not available
+"""
+
 import os
 import queue
 import sys

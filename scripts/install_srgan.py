@@ -1,3 +1,8 @@
+#!/usr/bin/env python3
+"""
+Install SRGAN dependencies
+"""
+
 import os
 import sys
 import json

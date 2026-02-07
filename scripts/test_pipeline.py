@@ -1,3 +1,8 @@
+#!/usr/bin/env python3
+"""
+Test SRGAN pipeline
+"""
+
 import requests
 import os
 

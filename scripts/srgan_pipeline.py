@@ -1,3 +1,8 @@
+#!/usr/bin/env python3
+"""
+SRGAN Pipeline - Main video upscaling pipeline
+"""
+
 import argparse
 import json
 import os
