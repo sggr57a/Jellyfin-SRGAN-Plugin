@@ -73,17 +73,12 @@ echo ""
 echo "Step 3: Clear old queue"
 echo "======================="
 if [ -f "./cache/queue.jsonl" ]; then
-    QUEUE_SIZE=$(wc -l < ./cache/queue.jsonl)
-    if [ $QUEUE_SIZE -gt 0 ]; then
-        echo "Clearing $QUEUE_SIZE old jobs..."
-        ./scripts/clear_queue.sh
-    else
-        echo "✓ Queue already empty"
-    fi
-else
-    echo "✓ No queue file"
+    echo "Backing up and clearing queue..."
+    cp ./cache/queue.jsonl "./cache/queue.jsonl.backup.$(date +%s)"
+    > ./cache/queue.jsonl
+    echo "✓ Queue cleared"
+    echo ""
 fi
-echo ""
 
 # Submit job via API
 echo "Step 4: Submit upscaling job"

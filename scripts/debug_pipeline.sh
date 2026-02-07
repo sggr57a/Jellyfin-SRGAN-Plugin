@@ -48,11 +48,15 @@ echo ""
 echo "3. Queue File"
 echo "============="
 if [ -f "./cache/queue.jsonl" ]; then
-    QUEUE_SIZE=$(wc -l < ./cache/queue.jsonl 2>/dev/null || echo "0")
+    QUEUE_SIZE=$(cat ./cache/queue.jsonl 2>/dev/null | wc -l | tr -d ' \r' || echo "0")
+    # Ensure QUEUE_SIZE is a valid number
+    if [[ ! "$QUEUE_SIZE" =~ ^[0-9]+$ ]]; then
+        QUEUE_SIZE="0"
+    fi
     echo "✓ Queue file exists"
     echo "  Jobs in queue: $QUEUE_SIZE"
     
-    if [ "$QUEUE_SIZE" -gt 0 ]; then
+    if [[ "$QUEUE_SIZE" -gt 0 ]] 2>/dev/null; then
         echo ""
         echo "  Recent jobs:"
         tail -3 ./cache/queue.jsonl | while read -r line; do

@@ -112,10 +112,15 @@ if ! docker ps --format '{{.Names}}' | grep -q "^srgan-upscaler$"; then
     echo "⚠ Container not running - cannot check queue file"
     echo "  Fix: docker compose up -d"
 elif docker exec srgan-upscaler test -f /app/cache/queue.jsonl 2>/dev/null; then
-    LINES=$(docker exec srgan-upscaler wc -l < /app/cache/queue.jsonl 2>/dev/null | tr -d ' \r' || echo "0")
+    # Use cat | wc -l instead of wc -l < to avoid file descriptor issues
+    LINES=$(docker exec srgan-upscaler sh -c 'cat /app/cache/queue.jsonl 2>/dev/null | wc -l' | tr -d ' \r' || echo "0")
+    # Ensure LINES is a valid number
+    if [[ ! "$LINES" =~ ^[0-9]+$ ]]; then
+        LINES="0"
+    fi
     echo "✓ Queue file exists"
     echo "  Pending jobs: $LINES"
-    if [ "$LINES" -gt "0" ]; then
+    if [[ "$LINES" -gt 0 ]] 2>/dev/null; then
         echo "  Note: Clear old jobs with: ./scripts/clear_queue.sh"
     fi
 else

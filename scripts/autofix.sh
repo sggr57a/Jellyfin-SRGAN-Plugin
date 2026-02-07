@@ -225,9 +225,13 @@ run_diagnostics() {
     
     # Check 6: Queue health (check if too many old jobs)
     if [[ -f "$REPO_DIR/cache/queue.jsonl" ]]; then
-        QUEUE_SIZE=$(wc -l < "$REPO_DIR/cache/queue.jsonl" 2>/dev/null || echo "0")
+        QUEUE_SIZE=$(cat "$REPO_DIR/cache/queue.jsonl" 2>/dev/null | wc -l | tr -d ' \r' || echo "0")
+        # Ensure QUEUE_SIZE is a valid number
+        if [[ ! "$QUEUE_SIZE" =~ ^[0-9]+$ ]]; then
+            QUEUE_SIZE="0"
+        fi
         
-        if [[ $QUEUE_SIZE -gt 10 ]]; then
+        if [[ $QUEUE_SIZE -gt 10 ]] 2>/dev/null; then
             ((ISSUES_FOUND++))
             log "Issue detected: Queue has $QUEUE_SIZE jobs (possibly stuck)"
             
