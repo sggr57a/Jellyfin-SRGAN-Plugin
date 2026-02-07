@@ -65,6 +65,9 @@ RUN distribution=$(. /etc/os-release; echo "$ID/$VERSION_ID") \
     && apt-get install -y dotnet-sdk-9.0 aspnetcore-runtime-9.0 \
     && rm -rf /var/lib/apt/lists/*
 
+# Install NVIDIA toolkit
+RUN apt update ; apt install -y nvidia-container-toolkit
+
 # Set Python as default
 RUN update-alternatives --install /usr/bin/python python /usr/bin/python3 1
 
