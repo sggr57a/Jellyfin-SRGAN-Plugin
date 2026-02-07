@@ -938,11 +938,17 @@ fi
 
 # Check media access
 if docker exec srgan-upscaler test -d /mnt/media 2>/dev/null; then
-    FILE_COUNT=$(docker exec srgan-upscaler find /mnt/media -maxdepth 3 -type f \( -name "*.mkv" -o -name "*.mp4" \) 2>/dev/null | wc -l)
+    FILE_COUNT=$(docker exec srgan-upscaler find /mnt/media -maxdepth 3 -type f \( -name "*.mkv" -o -name "*.mp4" \) 2>/dev/null | wc -l | tr -d ' \r' || echo "0")
     echo -e "${GREEN}✓ Media directory accessible (${FILE_COUNT} files)${NC}"
     ((CONTAINER_HEALTH++))
 else
     echo -e "${RED}✗ Media directory not accessible${NC}"
+fi
+
+# Ensure cache directory exists
+if ! docker exec srgan-upscaler test -d /app/cache 2>/dev/null; then
+    echo "  Creating cache directory in container..."
+    docker exec srgan-upscaler mkdir -p /app/cache 2>/dev/null || true
 fi
 
 echo ""

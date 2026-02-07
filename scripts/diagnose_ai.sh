@@ -107,15 +107,25 @@ echo ""
 # 8. Check queue file
 echo "8. Job Queue"
 echo "------------"
-if docker exec srgan-upscaler test -f /app/cache/queue.jsonl 2>/dev/null; then
-    LINES=$(docker exec srgan-upscaler wc -l < /app/cache/queue.jsonl 2>/dev/null || echo "0")
+# Check if container is accessible first
+if ! docker ps --format '{{.Names}}' | grep -q "^srgan-upscaler$"; then
+    echo "⚠ Container not running - cannot check queue file"
+    echo "  Fix: docker compose up -d"
+elif docker exec srgan-upscaler test -f /app/cache/queue.jsonl 2>/dev/null; then
+    LINES=$(docker exec srgan-upscaler wc -l < /app/cache/queue.jsonl 2>/dev/null | tr -d ' \r' || echo "0")
     echo "✓ Queue file exists"
     echo "  Pending jobs: $LINES"
     if [ "$LINES" -gt "0" ]; then
         echo "  Note: Clear old jobs with: ./scripts/clear_queue.sh"
     fi
 else
+    # Queue file doesn't exist yet - this is OK
     echo "⚠ Queue file not found (will be created on first job)"
+    # Check if cache directory exists
+    if ! docker exec srgan-upscaler test -d /app/cache 2>/dev/null; then
+        echo "  Creating cache directory..."
+        docker exec srgan-upscaler mkdir -p /app/cache 2>/dev/null || echo "  Could not create directory"
+    fi
 fi
 echo ""
 
