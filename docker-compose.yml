@@ -63,10 +63,38 @@ services:
     
     # Volume mounts
     volumes:
+      # Queue file (shared with watchdog)
       - ./cache:/app/cache
-      - ./models:/app/models
+      
+      # AI models
+      - ./models:/app/models:rw
+      
+      # Output directory (HLS streams + final files)
       - ./upscaled:/data/upscaled
+      
+      # Media input paths (auto-detected)
       - /mnt/media:/mnt/media:rw
+      # Queue file (shared with watchdog)
+      
+      # AI models
+      
+      # Output directory (HLS streams + final files)
+      
+      # Media input paths (auto-detected)
+      # Queue file (shared with watchdog)
+      
+      # AI models
+      
+      # Output directory (HLS streams + final files)
+      
+      # Media input paths (auto-detected)
+      # Queue file (shared with watchdog)
+      
+      # AI models
+      
+      # Output directory (HLS streams + final files)
+      
+      # Media input paths (auto-detected)
     
     # Resource limits
     ulimits:
