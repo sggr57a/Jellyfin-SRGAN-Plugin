@@ -248,12 +248,17 @@ def upscale(input_path: str, output_path: str, width=None, height=None, scale=2.
     frame_size = src_width * src_height * 3  # RGB24
     frame_count = 0
     
+    # Capture stderr once to avoid multiple read attempts
+    output_stderr = None
+    
     try:
         while True:
             # Check if output process has died
             if output_proc.poll() is not None:
-                stderr_output = output_proc.stderr.read().decode('utf-8', errors='replace')
-                raise RuntimeError(f"FFmpeg encoder died unexpectedly:\n{stderr_output}")
+                # Read and cache stderr once
+                if output_stderr is None:
+                    output_stderr = output_proc.stderr.read().decode('utf-8', errors='replace')
+                raise RuntimeError(f"FFmpeg encoder died unexpectedly:\n{output_stderr}")
             
             # Read frame
             frame_data = input_proc.stdout.read(frame_size)
@@ -296,8 +301,10 @@ def upscale(input_path: str, output_path: str, width=None, height=None, scale=2.
             try:
                 output_proc.stdin.write(upscaled.tobytes())
             except BrokenPipeError:
-                stderr_output = output_proc.stderr.read().decode('utf-8', errors='replace')
-                raise RuntimeError(f"FFmpeg encoder pipe broken:\n{stderr_output}")
+                # Read and cache stderr once if not already read
+                if output_stderr is None:
+                    output_stderr = output_proc.stderr.read().decode('utf-8', errors='replace')
+                raise RuntimeError(f"FFmpeg encoder pipe broken:\n{output_stderr}")
             
             frame_count += 1
             if frame_count % 30 == 0:
@@ -333,9 +340,11 @@ def upscale(input_path: str, output_path: str, width=None, height=None, scale=2.
         
         # Check for FFmpeg errors
         if output_proc.returncode != 0:
-            stderr_output = output_proc.stderr.read().decode('utf-8', errors='replace')
+            # Use cached stderr if already read, otherwise read it now
+            if output_stderr is None:
+                output_stderr = output_proc.stderr.read().decode('utf-8', errors='replace')
             print(f"FFmpeg encoder error (exit code {output_proc.returncode}):", file=sys.stderr)
-            print(stderr_output, file=sys.stderr)
+            print(output_stderr, file=sys.stderr)
     
     print("✓ AI upscaling complete", file=sys.stderr)
     print("=" * 80, file=sys.stderr)
