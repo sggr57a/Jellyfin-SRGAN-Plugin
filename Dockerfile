@@ -66,7 +66,7 @@ RUN distribution=$(. /etc/os-release; echo "$ID/$VERSION_ID") \
     && rm -rf /var/lib/apt/lists/*
 
 # Install NVIDIA toolkit
-RUN apt update ; apt install -y nvidia-container-toolkit
+RUN apt update ; apt install -y nvidia-container-toolkit && nvidia-ctk runtime configure --runtime=docker 
 
 # Set Python as default
 RUN update-alternatives --install /usr/bin/python python /usr/bin/python3 1
