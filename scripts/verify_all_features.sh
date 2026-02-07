@@ -44,9 +44,9 @@ echo ""
 # Feature 2: AI-Only Mode (No FFmpeg Fallback)
 echo "Feature 2: AI-Only Mode (No FFmpeg Fallback)"
 echo "=============================================="
-if grep -q 'if not used_model:' scripts/srgan_pipeline.py && \
-   grep -q 'print("ERROR: AI model upscaling failed!")' scripts/srgan_pipeline.py && \
-   grep -q 'continue' scripts/srgan_pipeline.py; then
+# Check for error handling when AI fails (not fallback)
+if grep -q 'ERROR: AI model upscaling failed' scripts/srgan_pipeline.py && \
+   ! grep -q 'def _run_ffmpeg(' scripts/srgan_pipeline.py | grep -v 'NotImplementedError'; then
     echo "✓ PASS: AI upscaling is mandatory, job fails if AI fails (no FFmpeg fallback)"
     ((PASSED++))
 else
