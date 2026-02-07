@@ -53,7 +53,7 @@ RUN apt-get update && apt-get install -y \
     inotify-tools \
     libgomp1 \
     docker-buildx \
-    nvidia-driver-580 \
+#    nvidia-driver-580 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install .NET 9 SDK and ASP.NET Core runtime for Jellyfin plugin build/runtime
@@ -66,7 +66,7 @@ RUN distribution=$(. /etc/os-release; echo "$ID/$VERSION_ID") \
     && rm -rf /var/lib/apt/lists/*
 
 # Install NVIDIA toolkit
-RUN apt update ; apt install -y nvidia-container-toolkit && nvidia-ctk runtime configure --runtime=docker 
+#RUN apt update ; apt install -y nvidia-container-toolkit && nvidia-ctk runtime configure --runtime=docker 
 
 # Set Python as default
 RUN update-alternatives --install /usr/bin/python python /usr/bin/python3 1
