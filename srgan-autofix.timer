@@ -1,0 +1,12 @@
+[Unit]
+Description=SRGAN Auto-Fix Timer
+Requires=srgan-autofix.service
+
+[Timer]
+# Run every 5 minutes
+OnBootSec=5min
+OnUnitActiveSec=5min
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

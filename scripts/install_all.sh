@@ -711,6 +711,122 @@ fi
 echo ""
 
 #==============================================================================
+# Step 11: Install Auto-Fix Service
+#==============================================================================
+
+echo -e "${BLUE}Step 11: Installing auto-fix service...${NC}"
+echo "=========================================================================="
+
+echo "The auto-fix service automatically detects and fixes common issues:"
+echo "  ✓ Container crashes → Auto-restart"
+echo "  ✓ Pipeline not running → Auto-restart with diagnostics"
+echo "  ✓ Watchdog stopped → Auto-restart"
+echo "  ✓ GPU not accessible → Docker daemon restart"
+echo "  ✓ Model file missing → Auto-download"
+echo "  ✓ Queue stuck → Auto-clear with backup"
+echo "  ✓ Recent errors → Run diagnostics and fix"
+echo ""
+
+# Make autofix.sh executable
+chmod +x "${SCRIPT_DIR}/autofix.sh"
+
+# Install systemd service and timer
+AUTOFIX_SERVICE="/etc/systemd/system/srgan-autofix.service"
+AUTOFIX_TIMER="/etc/systemd/system/srgan-autofix.timer"
+
+echo "Installing autofix service..."
+sudo tee "$AUTOFIX_SERVICE" > /dev/null << EOF
+[Unit]
+Description=SRGAN Auto-Fix Service
+After=docker.service srgan-watchdog-api.service
+Wants=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=${SCRIPT_DIR}/autofix.sh
+StandardOutput=append:/var/log/srgan-autofix.log
+StandardError=append:/var/log/srgan-autofix.log
+
+# Resource limits
+Nice=10
+IOSchedulingClass=idle
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+echo "Installing autofix timer..."
+sudo tee "$AUTOFIX_TIMER" > /dev/null << EOF
+[Unit]
+Description=SRGAN Auto-Fix Timer
+Requires=srgan-autofix.service
+
+[Timer]
+# Run every 5 minutes
+OnBootSec=5min
+OnUnitActiveSec=5min
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target
+EOF
+
+# Enable and start the timer
+sudo systemctl daemon-reload
+sudo systemctl enable srgan-autofix.timer
+sudo systemctl start srgan-autofix.timer
+
+# Verify timer is running
+if systemctl is-active --quiet srgan-autofix.timer; then
+    echo -e "${GREEN}✓ Auto-fix timer enabled${NC}"
+    echo "  Checking every 5 minutes for issues"
+    echo "  Logs: /var/log/srgan-autofix.log"
+else
+    echo -e "${YELLOW}⚠ Auto-fix timer not started${NC}"
+fi
+
+# Run initial autofix check
+echo ""
+echo "Running initial diagnostics..."
+"${SCRIPT_DIR}/autofix.sh" || true
+
+echo ""
+
+#==============================================================================
+# Step 12: Install Verification Scripts
+#==============================================================================
+
+echo -e "${BLUE}Step 12: Installing verification and debugging tools...${NC}"
+echo "=========================================================================="
+
+# Make all diagnostic scripts executable
+DIAGNOSTIC_SCRIPTS=(
+    "verify_all_features.sh"
+    "debug_pipeline.sh"
+    "test_manual_queue.sh"
+    "diagnose_ai.sh"
+    "clear_queue.sh"
+)
+
+for script in "${DIAGNOSTIC_SCRIPTS[@]}"; do
+    if [[ -f "${SCRIPT_DIR}/${script}" ]]; then
+        chmod +x "${SCRIPT_DIR}/${script}"
+        echo -e "  ✓ ${script}"
+    fi
+done
+
+echo ""
+echo -e "${GREEN}✓ Verification tools installed${NC}"
+echo ""
+echo "Available diagnostic commands:"
+echo "  ${SCRIPT_DIR}/verify_all_features.sh   - Verify all 10 features"
+echo "  ${SCRIPT_DIR}/debug_pipeline.sh        - 10-point diagnostic"
+echo "  ${SCRIPT_DIR}/test_manual_queue.sh     - Manual test with monitoring"
+echo "  ${SCRIPT_DIR}/diagnose_ai.sh           - AI-specific checks"
+echo "  ${SCRIPT_DIR}/autofix.sh               - Run auto-fix manually"
+echo ""
+
+#==============================================================================
 # Installation Complete
 #==============================================================================
 
@@ -721,6 +837,7 @@ echo ""
 
 echo -e "${CYAN}Services Running:${NC}"
 systemctl is-active --quiet srgan-watchdog-api && echo -e "  ✓ srgan-watchdog-api: ${GREEN}running${NC}" || echo -e "  ✗ srgan-watchdog-api: ${RED}not running${NC}"
+systemctl is-active --quiet srgan-autofix.timer && echo -e "  ✓ srgan-autofix (timer): ${GREEN}active${NC}" || echo -e "  ✗ srgan-autofix: ${RED}not active${NC}"
 docker ps --format "table {{.Names}}\t{{.Status}}" | grep -E "srgan-upscaler|hls-server" | sed 's/^/  ✓ /' || true
 
 echo ""
@@ -729,11 +846,18 @@ echo "  Service status:  sudo systemctl status srgan-watchdog-api"
 echo "  View logs:       sudo journalctl -u srgan-watchdog-api -f"
 echo "  Restart:         sudo systemctl restart srgan-watchdog-api"
 echo ""
+echo "  Auto-fix status: sudo systemctl status srgan-autofix.timer"
+echo "  Auto-fix logs:   tail -f /var/log/srgan-autofix.log"
+echo "  Run auto-fix:    ${SCRIPT_DIR}/autofix.sh"
+echo ""
 echo "  API status:      curl http://localhost:5432/status"
 echo "  Now playing:     curl http://localhost:5432/playing"
 echo ""
 echo "  Container logs:  docker logs srgan-upscaler -f"
 echo "  Restart:         docker compose restart srgan-upscaler"
+echo ""
+echo "  Debug:           ${SCRIPT_DIR}/debug_pipeline.sh"
+echo "  Manual test:     ${SCRIPT_DIR}/test_manual_queue.sh"
 echo ""
 
 echo -e "${CYAN}Configuration:${NC}"

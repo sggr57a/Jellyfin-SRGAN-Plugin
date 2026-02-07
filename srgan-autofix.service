@@ -1,0 +1,17 @@
+[Unit]
+Description=SRGAN Auto-Fix Service
+After=docker.service srgan-watchdog-api.service
+Wants=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/root/Jellyfin-SRGAN-Plugin/scripts/autofix.sh
+StandardOutput=append:/var/log/srgan-autofix.log
+StandardError=append:/var/log/srgan-autofix.log
+
+# Resource limits
+Nice=10
+IOSchedulingClass=idle
+
+[Install]
+WantedBy=multi-user.target
