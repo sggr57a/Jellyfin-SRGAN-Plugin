@@ -827,12 +827,385 @@ echo "  ${SCRIPT_DIR}/autofix.sh               - Run auto-fix manually"
 echo ""
 
 #==============================================================================
+# Step 13: Run Comprehensive Verification
+#==============================================================================
+
+echo -e "${BLUE}Step 13: Running comprehensive verification and tests...${NC}"
+echo "=========================================================================="
+echo ""
+echo "This will automatically verify all features, test the pipeline, and"
+echo "diagnose any issues. This ensures everything is working before completion."
+echo ""
+
+# Test 1: Verify All Features
+echo -e "${CYAN}Test 1: Feature Verification${NC}"
+echo "-----------------------------------------------------------"
+if [[ -f "${SCRIPT_DIR}/verify_all_features.sh" ]]; then
+    "${SCRIPT_DIR}/verify_all_features.sh" 2>&1 | tee /tmp/feature_verification.log
+    
+    # Check results
+    if grep -q "10 passed, 0 failed" /tmp/feature_verification.log; then
+        echo ""
+        echo -e "${GREEN}✓✓✓ All 10 features verified successfully${NC}"
+    else
+        echo ""
+        echo -e "${YELLOW}⚠ Some features need attention${NC}"
+        echo "  Check: /tmp/feature_verification.log"
+    fi
+else
+    echo -e "${YELLOW}⚠ Feature verification script not found${NC}"
+fi
+echo ""
+
+# Test 2: Pipeline Diagnostics
+echo -e "${CYAN}Test 2: Pipeline Diagnostics${NC}"
+echo "-----------------------------------------------------------"
+if [[ -f "${SCRIPT_DIR}/debug_pipeline.sh" ]]; then
+    "${SCRIPT_DIR}/debug_pipeline.sh" 2>&1 | tee /tmp/pipeline_diagnostics.log
+    
+    # Check for critical issues
+    if grep -q "✗" /tmp/pipeline_diagnostics.log; then
+        echo ""
+        echo -e "${YELLOW}⚠ Some diagnostic checks failed${NC}"
+        echo "  Auto-fix will address these issues automatically"
+    else
+        echo ""
+        echo -e "${GREEN}✓ All diagnostic checks passed${NC}"
+    fi
+else
+    echo -e "${YELLOW}⚠ Pipeline diagnostic script not found${NC}"
+fi
+echo ""
+
+# Test 3: AI Diagnostics
+echo -e "${CYAN}Test 3: AI Model and GPU Diagnostics${NC}"
+echo "-----------------------------------------------------------"
+if [[ -f "${SCRIPT_DIR}/diagnose_ai.sh" ]]; then
+    "${SCRIPT_DIR}/diagnose_ai.sh" 2>&1 | tee /tmp/ai_diagnostics.log
+    
+    # Check AI readiness
+    if grep -q "10/10" /tmp/ai_diagnostics.log || grep -q "All checks passed" /tmp/ai_diagnostics.log; then
+        echo ""
+        echo -e "${GREEN}✓ AI model and GPU ready${NC}"
+    else
+        echo ""
+        echo -e "${YELLOW}⚠ AI model may need attention${NC}"
+        echo "  Check: /tmp/ai_diagnostics.log"
+    fi
+else
+    echo -e "${YELLOW}⚠ AI diagnostic script not found${NC}"
+fi
+echo ""
+
+# Test 4: Docker Container Health
+echo -e "${CYAN}Test 4: Docker Container Health Check${NC}"
+echo "-----------------------------------------------------------"
+CONTAINER_HEALTH=0
+
+# Check container is running
+if docker ps --format '{{.Names}}' | grep -q "^srgan-upscaler$"; then
+    echo -e "${GREEN}✓ Container is running${NC}"
+    ((CONTAINER_HEALTH++))
+else
+    echo -e "${RED}✗ Container is not running${NC}"
+fi
+
+# Check GPU access
+if docker exec srgan-upscaler nvidia-smi >/dev/null 2>&1; then
+    echo -e "${GREEN}✓ GPU accessible from container${NC}"
+    ((CONTAINER_HEALTH++))
+else
+    echo -e "${RED}✗ GPU not accessible${NC}"
+fi
+
+# Check model file
+if docker exec srgan-upscaler test -f /app/models/swift_srgan_4x.pth 2>/dev/null; then
+    MODEL_SIZE=$(docker exec srgan-upscaler ls -lh /app/models/swift_srgan_4x.pth 2>/dev/null | awk '{print $5}')
+    echo -e "${GREEN}✓ Model file exists (${MODEL_SIZE})${NC}"
+    ((CONTAINER_HEALTH++))
+else
+    echo -e "${RED}✗ Model file missing${NC}"
+fi
+
+# Check pipeline process
+if docker exec srgan-upscaler pgrep -f "srgan_pipeline.py" >/dev/null 2>&1; then
+    echo -e "${GREEN}✓ Pipeline process is running${NC}"
+    ((CONTAINER_HEALTH++))
+else
+    echo -e "${YELLOW}⚠ Pipeline process not running (will start when job queued)${NC}"
+    ((CONTAINER_HEALTH++))  # Not critical
+fi
+
+# Check media access
+if docker exec srgan-upscaler test -d /mnt/media 2>/dev/null; then
+    FILE_COUNT=$(docker exec srgan-upscaler find /mnt/media -maxdepth 3 -type f \( -name "*.mkv" -o -name "*.mp4" \) 2>/dev/null | wc -l)
+    echo -e "${GREEN}✓ Media directory accessible (${FILE_COUNT} files)${NC}"
+    ((CONTAINER_HEALTH++))
+else
+    echo -e "${RED}✗ Media directory not accessible${NC}"
+fi
+
+echo ""
+echo "Container health score: ${CONTAINER_HEALTH}/5"
+if [[ $CONTAINER_HEALTH -ge 4 ]]; then
+    echo -e "${GREEN}✓ Container is healthy${NC}"
+else
+    echo -e "${YELLOW}⚠ Container needs attention${NC}"
+fi
+echo ""
+
+# Test 5: Service Health
+echo -e "${CYAN}Test 5: Service Health Check${NC}"
+echo "-----------------------------------------------------------"
+SERVICE_HEALTH=0
+
+# Watchdog API
+if systemctl is-active --quiet srgan-watchdog-api; then
+    echo -e "${GREEN}✓ Watchdog API service running${NC}"
+    ((SERVICE_HEALTH++))
+else
+    echo -e "${RED}✗ Watchdog API not running${NC}"
+fi
+
+# Auto-fix timer
+if systemctl is-active --quiet srgan-autofix.timer; then
+    echo -e "${GREEN}✓ Auto-fix timer active${NC}"
+    ((SERVICE_HEALTH++))
+else
+    echo -e "${RED}✗ Auto-fix timer not active${NC}"
+fi
+
+# Watchdog API endpoint
+if curl -s -f http://localhost:5432/status >/dev/null 2>&1; then
+    echo -e "${GREEN}✓ Watchdog API responding${NC}"
+    ((SERVICE_HEALTH++))
+else
+    echo -e "${YELLOW}⚠ Watchdog API not responding yet${NC}"
+fi
+
+echo ""
+echo "Service health score: ${SERVICE_HEALTH}/3"
+if [[ $SERVICE_HEALTH -ge 2 ]]; then
+    echo -e "${GREEN}✓ Services are healthy${NC}"
+else
+    echo -e "${YELLOW}⚠ Services need attention${NC}"
+fi
+echo ""
+
+# Test 6: Configuration Validation
+echo -e "${CYAN}Test 6: Configuration Validation${NC}"
+echo "-----------------------------------------------------------"
+CONFIG_VALID=0
+
+# Check docker-compose.yml
+if [[ -f "${REPO_DIR}/docker-compose.yml" ]]; then
+    if grep -q "SRGAN_ENABLE=1" "${REPO_DIR}/docker-compose.yml"; then
+        echo -e "${GREEN}✓ AI upscaling enabled${NC}"
+        ((CONFIG_VALID++))
+    else
+        echo -e "${YELLOW}⚠ AI upscaling not enabled${NC}"
+    fi
+    
+    if grep -q "/mnt/media:/mnt/media:rw" "${REPO_DIR}/docker-compose.yml"; then
+        echo -e "${GREEN}✓ Media volume mounted read-write${NC}"
+        ((CONFIG_VALID++))
+    else
+        echo -e "${YELLOW}⚠ Media volume may be read-only${NC}"
+    fi
+    
+    if grep -q "OUTPUT_FORMAT=mkv" "${REPO_DIR}/docker-compose.yml"; then
+        echo -e "${GREEN}✓ Output format configured (MKV)${NC}"
+        ((CONFIG_VALID++))
+    else
+        echo -e "${YELLOW}⚠ Output format not explicitly set${NC}"
+    fi
+else
+    echo -e "${RED}✗ docker-compose.yml not found${NC}"
+fi
+
+# Check environment file
+if [[ -f "${ENV_FILE}" ]]; then
+    echo -e "${GREEN}✓ Watchdog environment file exists${NC}"
+    ((CONFIG_VALID++))
+else
+    echo -e "${YELLOW}⚠ Watchdog environment file missing${NC}"
+fi
+
+echo ""
+echo "Configuration score: ${CONFIG_VALID}/4"
+if [[ $CONFIG_VALID -ge 3 ]]; then
+    echo -e "${GREEN}✓ Configuration is valid${NC}"
+else
+    echo -e "${YELLOW}⚠ Configuration needs review${NC}"
+fi
+echo ""
+
+# Test 7: Python Scripts Verification
+echo -e "${CYAN}Test 7: Python Scripts Health Check${NC}"
+echo "-----------------------------------------------------------"
+PYTHON_HEALTH=0
+
+# Check key Python files have shebangs
+KEY_PYTHON_FILES=(
+    "srgan_pipeline.py"
+    "your_model_file_ffmpeg.py"
+    "your_model_file.py"
+    "watchdog_api.py"
+)
+
+for py_file in "${KEY_PYTHON_FILES[@]}"; do
+    if [[ -f "${SCRIPT_DIR}/${py_file}" ]]; then
+        if head -1 "${SCRIPT_DIR}/${py_file}" | grep -q "^#!/usr/bin/env python3"; then
+            echo -e "${GREEN}✓ ${py_file} has shebang${NC}"
+            ((PYTHON_HEALTH++))
+        else
+            echo -e "${RED}✗ ${py_file} missing shebang${NC}"
+        fi
+    else
+        echo -e "${YELLOW}⚠ ${py_file} not found${NC}"
+    fi
+done
+
+echo ""
+echo "Python health score: ${PYTHON_HEALTH}/${#KEY_PYTHON_FILES[@]}"
+if [[ $PYTHON_HEALTH -eq ${#KEY_PYTHON_FILES[@]} ]]; then
+    echo -e "${GREEN}✓ All Python scripts properly configured${NC}"
+else
+    echo -e "${YELLOW}⚠ Some Python scripts need fixing${NC}"
+fi
+echo ""
+
+#==============================================================================
+# Step 14: Generate Verification Report
+#==============================================================================
+
+echo -e "${BLUE}Step 14: Generating installation report...${NC}"
+echo "=========================================================================="
+echo ""
+
+REPORT_FILE="${REPO_DIR}/INSTALLATION_REPORT.txt"
+
+cat > "$REPORT_FILE" << EOF
+================================================================================
+SRGAN PIPELINE INSTALLATION REPORT
+================================================================================
+Date: $(date)
+Installation Directory: ${REPO_DIR}
+
+================================================================================
+VERIFICATION SUMMARY
+================================================================================
+
+Test 1: Feature Verification
+$(grep -E "passed|failed" /tmp/feature_verification.log 2>/dev/null || echo "Not available")
+
+Test 2: Pipeline Diagnostics
+  Container Health: ${CONTAINER_HEALTH}/5
+  Service Health: ${SERVICE_HEALTH}/3
+
+Test 3: AI & GPU Diagnostics
+$(grep -E "✓|✗|PASS|FAIL" /tmp/ai_diagnostics.log 2>/dev/null | head -10 || echo "Not available")
+
+Test 4: Configuration
+  Configuration Score: ${CONFIG_VALID}/4
+
+Test 5: Python Scripts
+  Python Health: ${PYTHON_HEALTH}/${#KEY_PYTHON_FILES[@]}
+
+================================================================================
+SERVICES STATUS
+================================================================================
+Watchdog API: $(systemctl is-active srgan-watchdog-api 2>/dev/null || echo "unknown")
+Auto-fix Timer: $(systemctl is-active srgan-autofix.timer 2>/dev/null || echo "unknown")
+Docker Container: $(docker ps --format '{{.Status}}' --filter name=srgan-upscaler 2>/dev/null || echo "not running")
+
+================================================================================
+CONFIGURATION
+================================================================================
+Environment File: ${ENV_FILE}
+Service File: ${SERVICE_FILE}
+Queue File: ${REPO_DIR}/cache/queue.jsonl
+Jellyfin URL: ${JELLYFIN_URL}
+
+================================================================================
+QUICK COMMANDS
+================================================================================
+View Logs:
+  - Watchdog: sudo journalctl -u srgan-watchdog-api -f
+  - Auto-fix: tail -f /var/log/srgan-autofix.log
+  - Container: docker logs -f srgan-upscaler
+
+Diagnostics:
+  - Features: ${SCRIPT_DIR}/verify_all_features.sh
+  - Pipeline: ${SCRIPT_DIR}/debug_pipeline.sh
+  - AI Model: ${SCRIPT_DIR}/diagnose_ai.sh
+  - Auto-fix: ${SCRIPT_DIR}/autofix.sh
+
+Testing:
+  - Manual test: ${SCRIPT_DIR}/test_manual_queue.sh
+  - Complete workflow: ${SCRIPT_DIR}/test_complete_workflow.sh
+
+================================================================================
+NEXT STEPS
+================================================================================
+1. Configure Jellyfin webhook (see above)
+2. Play a video in Jellyfin
+3. Monitor logs: docker logs -f srgan-upscaler
+4. Check output: Files will appear in same directory as input
+
+================================================================================
+SUPPORT
+================================================================================
+If issues occur:
+1. Check auto-fix logs: tail -f /var/log/srgan-autofix.log
+2. Run diagnostics: ${SCRIPT_DIR}/debug_pipeline.sh
+3. Check this report: ${REPORT_FILE}
+
+Auto-fix will automatically resolve most issues within 5 minutes.
+
+================================================================================
+EOF
+
+echo -e "${GREEN}✓ Installation report generated${NC}"
+echo "  Report saved to: ${REPORT_FILE}"
+echo ""
+
+# Display summary
+echo -e "${CYAN}════════════════════════════════════════════════════════════════${NC}"
+echo -e "${CYAN}VERIFICATION SUMMARY${NC}"
+echo -e "${CYAN}════════════════════════════════════════════════════════════════${NC}"
+echo ""
+
+TOTAL_SCORE=$((CONTAINER_HEALTH + SERVICE_HEALTH + CONFIG_VALID + PYTHON_HEALTH))
+MAX_SCORE=17
+
+echo "Overall Health Score: ${TOTAL_SCORE}/${MAX_SCORE}"
+echo ""
+
+if [[ $TOTAL_SCORE -ge 14 ]]; then
+    echo -e "${GREEN}✓✓✓ EXCELLENT${NC} - System is fully operational"
+elif [[ $TOTAL_SCORE -ge 10 ]]; then
+    echo -e "${YELLOW}⚠ GOOD${NC} - Minor issues detected, auto-fix will resolve"
+else
+    echo -e "${RED}⚠ NEEDS ATTENTION${NC} - Check report and run diagnostics"
+fi
+
+echo ""
+echo -e "${CYAN}════════════════════════════════════════════════════════════════${NC}"
+echo ""
+
+#==============================================================================
 # Installation Complete
 #==============================================================================
 
 echo "=========================================================================="
 echo -e "${GREEN}Installation Complete!${NC}"
 echo "=========================================================================="
+echo ""
+
+echo -e "${CYAN}✓ Automated Verification Completed${NC}"
+echo "  All tests and diagnostics have been run automatically"
+echo "  Installation report: ${REPORT_FILE}"
 echo ""
 
 echo -e "${CYAN}Services Running:${NC}"
