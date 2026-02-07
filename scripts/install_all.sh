@@ -256,9 +256,6 @@ fi
 echo ""
 echo "Updating docker-compose.yml with volume mounts..."
 
-# Backup current docker-compose.yml
-cp "${REPO_DIR}/docker-compose.yml" "${REPO_DIR}/docker-compose.yml.backup.$(date +%Y%m%d_%H%M%S)"
-
 # Create new docker-compose.yml with updated volumes
 # Use awk to insert detected paths after the volumes section
 {
@@ -292,7 +289,7 @@ BEGIN {
     print "      - ./cache:/app/cache"
     print "      "
     print "      # AI models"
-    print "      - ./models:/app/models:ro"
+    print "      - ./models:/app/models:rw"
     print "      "
     print "      # Output directory (HLS streams + final files)"
     print "      - ./upscaled:/data/upscaled"
@@ -303,7 +300,7 @@ BEGIN {
         print "      # Media input paths (auto-detected)"
         for (i in path_array) {
             if (path_array[i] != "") {
-                print "      - " path_array[i] ":" path_array[i] ":ro"
+                print "      - " path_array[i] ":" path_array[i] ":rw"
             }
         }
     }
